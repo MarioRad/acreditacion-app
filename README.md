@@ -8,6 +8,10 @@ inscriptos del backend.
 
 1. Se muestra el logo como pantalla de inicio y luego el menú principal con tres opciones:
    **Acreditaciones**, **Entrega de Menú** y **Notificaciones**.
+2. Al elegir **Notificaciones** la app consulta el endpoint `GET /api/mobile/notificaciones`
+   del backend y muestra los avisos publicados desde el panel admin (tipos **Información**,
+   **Alerta**, **Urgente** y **Recordatorio**, con fecha). Se puede refrescar con el botón ↻
+   o bajando la lista (pull-to-refresh).
 2. Las opciones que requieren sesión piden al operador iniciar sesión con su usuario del panel
    (permiso **Acreditación**) mediante **usuario y contraseña** o **huella** (biometría). La URL
    del servidor está predefinida en `src/config.js`, no se ingresa manualmente.
@@ -41,14 +45,14 @@ del programa (con 20 minutos de tolerancia), la app funciona como control de com
 | Archivo | Descripción |
 | --- | --- |
 | `App.js` | Raíz: splash, menú y navegación entre pantallas (sesión persistente con AsyncStorage) |
-| `src/api.js` | Cliente HTTP (`/api/mobile/login`, `/api/mobile/acreditar`) |
+| `src/api.js` | Cliente HTTP (`/api/mobile/login`, `/api/mobile/acreditar`, `/api/mobile/notificaciones`) |
 | `src/config.js` | URL del servidor predefinida (ya no la ingresa el usuario) |
 | `src/PantallaSplash.js` | Pantalla de inicio con el logo (1,8 s) |
 | `src/PantallaMenu.js` | Menú principal con 3 opciones (Acreditaciones, Entrega de Menú, Notificaciones) |
 | `src/PantallaLogin.js` | Ingreso con usuario y contraseña o con huella (biometría, credenciales guardadas) |
 | `src/PantallaEscanner.js` | Cámara de acreditación, linterna, vibración y contadores |
 | `src/PantallaEntregaMenu.js` | Escaneo de QR y confirmación de entrega de menú con check |
-| `src/PantallaNotificaciones.js` | Pantalla de avisos y novedades (esqueleto) |
+| `src/PantallaNotificaciones.js` | Avisos y novedades del encuentro (lista desde el backend con tipos, fechas y refresco; requiere sesión) |
 | `src/OverlayResultado.js` | Overlays verde / rojo / naranja |
 | `src/sonidos.js` | Reproducción de los bip (`assets/beep_ok.wav`, `beep_error.wav`) |
 | `scripts/generar-sonidos.js` | Regenera los WAV de los bip |
@@ -93,13 +97,15 @@ npx expo run:android --variant release
 
 ## Backend: endpoints utilizados
 
-La app usa dos endpoints del backend (repositorio del backend/frontend web,
+La app usa tres endpoints del backend (repositorio del backend/frontend web,
 autenticación por token Bearer, independiente de las cookies del panel):
 
 - `POST /api/mobile/login` → `{ username, password }` devuelve `{ token }`.
   Exige un usuario activo con `perm_acreditacion`.
 - `POST /api/mobile/acreditar` → `{ codigo }` (contenido crudo del QR) devuelve:
   `{ encontrado: true/false, nombre, apellido, dni, talleres[], coincideCodigo }`.
+- `GET /api/mobile/notificaciones` → devuelve `{ ok, notificaciones }` con las
+  notificaciones activas (`id`, `titulo`, `mensaje`, `tipo`, `creado_en`).
 
 Los endpoints se pueden probar sin teléfono con el script `scripts/prueba-api-movil.js`
 del repositorio del **backend** (usa una base simulada; valida login, token, QR válido,

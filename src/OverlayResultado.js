@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 
 const ETIQUETAS_ALIMENTACION = {
   sin_restriccion: 'Sin restricción',
@@ -233,7 +233,8 @@ const styles = StyleSheet.create({
   },
   pista: {
     position: 'absolute',
-    top: 60,
+    top: 0,
+    paddingTop: (StatusBar.currentHeight || 0) + 8,
     color: 'rgba(255,255,255,0.85)',
     fontSize: 14,
   },

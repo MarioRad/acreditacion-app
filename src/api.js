@@ -55,6 +55,27 @@ export async function iniciarSesion(servidor, usuario, password) {
   return { servidorUrl: base, token: datos.token, nombre: datos.nombre || usuario };
 }
 
+export async function obtenerNotificaciones(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/notificaciones`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
 export async function verificarCodigo(sesion, codigo) {
   const base = normalizarUrl(sesion.servidorUrl);
   try {

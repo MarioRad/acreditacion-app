@@ -11,7 +11,11 @@ import { prepararAudio } from './src/sonidos';
 
 const CLAVE_SESION = 'acreditacion.sesion';
 
-const PANTALLAS_SESION = { acreditaciones: 'escaner', entregaMenu: 'entregaMenu' };
+const PANTALLAS_SESION = {
+  acreditaciones: 'escaner',
+  entregaMenu: 'entregaMenu',
+  notificaciones: 'notificaciones',
+};
 
 export default function App() {
   const [sesion, setSesion] = useState(null);
@@ -64,8 +68,6 @@ export default function App() {
         } else {
           setPantalla('login');
         }
-      } else if (clave === 'notificaciones') {
-        setPantalla('notificaciones');
       }
     },
     [sesion]
@@ -101,7 +103,13 @@ export default function App() {
       />
     );
   } else if (pantalla === 'notificaciones') {
-    contenido = <PantallaNotificaciones onVolver={() => setPantalla('menu')} />;
+    contenido = (
+      <PantallaNotificaciones
+        sesion={sesion}
+        alExpirarSesion={expirarSesion}
+        onVolver={() => setPantalla('menu')}
+      />
+    );
   }
 
   return (
