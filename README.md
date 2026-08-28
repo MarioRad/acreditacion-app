@@ -1,4 +1,4 @@
-# App móvil de Acreditación — Dramatiza Salta 2026
+# App móvil de Acreditación 
 
 App Android en React Native (Expo) para controlar acreditaciones del encuentro escaneando
 el código QR de cada asistente con la cámara y validándolo contra la base de datos de
