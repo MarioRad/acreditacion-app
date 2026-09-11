@@ -163,12 +163,10 @@ const styles = StyleSheet.create({
   botonPermisoTexto: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   marco: {
     ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   visor: {
-    position: 'absolute',
-    top: '50%',
-    alignSelf: 'center',
-    marginTop: -130,
     width: 260,
     height: 260,
     borderWidth: 3,
@@ -176,10 +174,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   ayuda: {
-    position: 'absolute',
-    top: '50%',
-    alignSelf: 'center',
-    marginTop: 150,
+    marginTop: 16,
     color: '#fff',
     fontSize: 15,
     backgroundColor: 'rgba(0,0,0,0.55)',

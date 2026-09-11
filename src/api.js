@@ -52,7 +52,47 @@ export async function iniciarSesion(servidor, usuario, password) {
     method: 'POST',
     body: JSON.stringify({ username: String(usuario || '').trim(), password: String(password || '') }),
   });
-  return { servidorUrl: base, token: datos.token, nombre: datos.nombre || usuario };
+  return {
+    servidorUrl: base,
+    token: datos.token,
+    nombre: datos.nombre || usuario,
+    rol: datos.rol || 'operador',
+  };
+}
+
+export async function crearNotificacion(sesion, { titulo, mensaje, tipo }) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/notificaciones`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sesion.token}` },
+      body: JSON.stringify({ titulo, mensaje, tipo }),
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e.status === 403) {
+      const err = new Error(e.message || 'No tenés permisos para enviar notificaciones (solo admin).');
+      err.permisoDenegado = true;
+      throw err;
+    }
+    if (e.status === 404) {
+      const err = new Error(
+        'El servidor no tiene habilitado POST /api/mobile/notificaciones (404). Actualizá el backend: en 192.168.100.20 hacé `cd /var/dramatiza && git pull origin main && pm2 restart inscripciones` (o reiniciá el servicio del backend).'
+      );
+      err.status = 404;
+      throw err;
+    }
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
 }
 
 export async function obtenerNotificaciones(sesion) {
@@ -65,6 +105,11 @@ export async function obtenerNotificaciones(sesion) {
     if (e.status === 401) {
       const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
       err.sesionExpirada = true;
+      throw err;
+    }
+    if (e.status === 404) {
+      const err = new Error('Endpoint de notificaciones no encontrado (404). Verificá que el backend esté actualizado.');
+      err.status = 404;
       throw err;
     }
     if (e instanceof TypeError || !e.status) {

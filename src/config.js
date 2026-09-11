@@ -1,1 +1,1 @@
-export const SERVIDOR_URL = 'http://192.168.100.187:3000';
+export const SERVIDOR_URL = 'https://apl.radich.duckdns.org/';
