@@ -31,6 +31,21 @@ function formatearFecha(iso) {
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function tiempoRelativo(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const diff = Date.now() - d.getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'hace instantes';
+  if (min < 60) return `hace ${min} min`;
+  const hs = Math.floor(min / 60);
+  if (hs < 24) return `hace ${hs} h`;
+  const dias = Math.floor(hs / 24);
+  if (dias === 1) return 'ayer';
+  if (dias < 7) return `hace ${dias} días`;
+  return formatearFecha(iso);
+}
 
 export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolver }) {
   const [notificaciones, setNotificaciones] = useState([]);
@@ -38,6 +53,7 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
   const [error, setError] = useState('');
   const [refrescando, setRefrescando] = useState(false);
   const enCursoRef = useRef(false);
+  const [filtroTipo, setFiltroTipo] = useState('todas'); // todas | no_leidas | info | alerta | urgente | recordatorio
 
   // Admin: formulario envío
   const esAdmin = sesion?.rol === 'admin';
@@ -168,6 +184,13 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
 
   const noLeidas = notificaciones.filter(n=>!n.leida).length;
   const leidas = notificaciones.filter(n=>n.leida).length;
+  const filtradas = notificaciones.filter(n=>{
+    if (filtroTipo==='todas') return true;
+    if (filtroTipo==='no_leidas') return !n.leida;
+    return String(n.tipo)===filtroTipo;
+  });
+  const filtradasNoLeidas = filtradas.filter(n=>!n.leida);
+  const filtradasLeidas = filtradas.filter(n=>n.leida);
 
   return (
     <View style={styles.flex}>
@@ -229,7 +252,7 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
             <Text style={styles.icono}>🔔</Text>
             <Text style={styles.vacioTitulo}>Sin notificaciones</Text>
             <Text style={styles.vacioDescripcion}>
-              Aquí verás los avisos y novedades del encuentro.
+              Aquí verás los avisos y novedades del encuentro. Pull para actualizar.
             </Text>
             {esAdmin ? (
               <Pressable style={styles.botonReintentar} onPress={() => setMostrarForm(true)}>
@@ -245,39 +268,75 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
             <RefreshControl refreshing={refrescando} onRefresh={() => refrescar(false)} tintColor="#38bdf8" />
           }
         >
-          {notificaciones.filter(n=>!n.leida).map((n) => {
-            const tipo = INFO_TIPO[String(n.tipo)] || INFO_TIPO.info;
-            return (
-              <Pressable key={n.id} onPress={()=>marcarLeida(n.id)} style={[styles.tarjeta, { borderLeftColor: tipo.color }]}>
-                <View style={styles.tarjetaEncabezado}>
-                  <Text style={styles.tipoIcono}>{tipo.icono}</Text>
-                  <Text style={[styles.tipoTexto, { color: tipo.color }]}>{tipo.etiqueta}</Text>
-                  <Text style={styles.fecha}>{n.creado_en_texto || formatearFecha(n.creado_en)}</Text>
-                  <Text style={styles.badgeNueva}>NUEVA</Text>
-                </View>
-                <Text style={styles.titulo}>{n.titulo}</Text>
-                {n.mensaje ? <Text style={styles.mensaje}>{n.mensaje}</Text> : null}
-                <Text style={styles.toqueHint}>Tocar para marcar leída</Text>
-              </Pressable>
-            );
-          })}
-          {noLeidas>0 && leidas>0 ? <Text style={styles.separadorLeidas}>— Leídas — pasan a segundo plano</Text> : null}
-          {notificaciones.filter(n=>n.leida).map((n) => {
-            const tipo = INFO_TIPO[String(n.tipo)] || INFO_TIPO.info;
-            return (
-              <View key={n.id} style={[styles.tarjeta, styles.tarjetaLeida, { borderLeftColor: '#475569' }]}>
-                <View style={styles.tarjetaEncabezado}>
-                  <Text style={styles.tipoIcono}>{tipo.icono}</Text>
-                  <Text style={[styles.tipoTexto, { color: '#94a3b8' }]}>{tipo.etiqueta}</Text>
-                  <Text style={styles.fecha}>{n.creado_en_texto || formatearFecha(n.creado_en)}</Text>
-                  <Text style={styles.badgeLeida}>leída</Text>
-                </View>
-                <Text style={[styles.titulo, styles.tituloLeida]}>{n.titulo}</Text>
-                {n.mensaje ? <Text style={[styles.mensaje, styles.mensajeLeida]}>{n.mensaje}</Text> : null}
-              </View>
-            );
-          })}
-          <Text style={styles.footer}>Se actualiza automáticamente cada 15 s · {noLeidas} sin leer</Text>
+          {/* KPIs compactos */}
+          <View style={styles.kpiRow}>
+            <View style={[styles.kpiMini, { borderTopColor: '#38bdf8' }]}><Text style={styles.kpiMiniLabel}>Total</Text><Text style={styles.kpiMiniValor}>{notificaciones.length}</Text></View>
+            <View style={[styles.kpiMini, { borderTopColor: '#ef4444' }]}><Text style={styles.kpiMiniLabel}>Nuevas</Text><Text style={[styles.kpiMiniValor, { color: '#ef4444' }]}>{noLeidas}</Text></View>
+            <View style={[styles.kpiMini, { borderTopColor: '#475569' }]}><Text style={styles.kpiMiniLabel}>Leídas</Text><Text style={styles.kpiMiniValor}>{leidas}</Text></View>
+          </View>
+
+          {/* Filtros */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtrosFila}>
+            {[
+              { id:'todas', label:`Todas (${notificaciones.length})` },
+              { id:'no_leidas', label:`Nuevas (${noLeidas})` },
+              ...TIPOS_OPCIONES.map(t=>({ id:t, label: `${INFO_TIPO[t].icono} ${INFO_TIPO[t].etiqueta}` })),
+            ].map(f=> {
+              const activo = filtroTipo===f.id;
+              return (
+                <Pressable key={f.id} onPress={()=>setFiltroTipo(f.id)} style={[styles.filtroChip, activo && styles.filtroChipActivo]}>
+                  <Text style={[styles.filtroChipTexto, activo && styles.filtroChipTextoActivo]}>{f.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {filtradas.length===0 ? (
+            <View style={[styles.vacio, { marginTop: 24 }]}><Text style={styles.vacioDescripcion}>Sin resultados para este filtro.</Text></View>
+          ) : (
+            <>
+              {filtradasNoLeidas.map((n) => {
+                const tipo = INFO_TIPO[String(n.tipo)] || INFO_TIPO.info;
+                return (
+                  <Pressable key={`u-${n.id}`} onPress={()=>marcarLeida(n.id)} style={[styles.tarjeta, styles.tarjetaNueva, { borderLeftColor: tipo.color }]}>
+                    <View style={styles.tarjetaEncabezado}>
+                      <View style={[styles.tipoPill, { backgroundColor: `${tipo.color}20`, borderColor: `${tipo.color}40` }]}>
+                        <Text style={styles.tipoIcono}>{tipo.icono}</Text>
+                        <Text style={[styles.tipoTexto, { color: tipo.color }]}>{tipo.etiqueta}</Text>
+                      </View>
+                      <Text style={styles.fechaRelativa}>{tiempoRelativo(n.creado_en)}</Text>
+                      <View style={styles.badgeNueva}><Text style={styles.badgeNuevaTexto}>NUEVA</Text></View>
+                    </View>
+                    <Text style={styles.titulo}>{n.titulo}</Text>
+                    {n.mensaje ? <Text style={styles.mensaje} numberOfLines={4}>{n.mensaje}</Text> : null}
+                    <View style={styles.tarjetaPie}>
+                      <Text style={styles.fechaAbsoluta}>{n.creado_en_texto || formatearFecha(n.creado_en)}{n.creado_por ? ` · por ${n.creado_por}` : ''}</Text>
+                      <Text style={styles.toqueHint}>Tocar para marcar leída →</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+              {filtradasNoLeidas.length>0 && filtradasLeidas.length>0 ? <View style={styles.separadorWrap}><View style={styles.separadorLinea} /><Text style={styles.separadorLeidas}>LEÍDAS</Text><View style={styles.separadorLinea} /></View> : null}
+              {filtradasLeidas.map((n) => {
+                const tipo = INFO_TIPO[String(n.tipo)] || INFO_TIPO.info;
+                return (
+                  <View key={`r-${n.id}`} style={[styles.tarjeta, styles.tarjetaLeida]}>
+                    <View style={styles.tarjetaEncabezado}>
+                      <View style={[styles.tipoPill, styles.tipoPillLeida]}>
+                        <Text style={styles.tipoIcono}>{tipo.icono}</Text>
+                        <Text style={[styles.tipoTexto, { color: '#94a3b8' }]}>{tipo.etiqueta}</Text>
+                      </View>
+                      <Text style={styles.fechaRelativa}>{tiempoRelativo(n.creado_en)}</Text>
+                      <View style={styles.badgeLeida}><Text style={styles.badgeLeidaTexto}>leída</Text></View>
+                    </View>
+                    <Text style={[styles.titulo, styles.tituloLeida]}>{n.titulo}</Text>
+                    {n.mensaje ? <Text style={[styles.mensaje, styles.mensajeLeida]} numberOfLines={3}>{n.mensaje}</Text> : null}
+                    <Text style={styles.fechaAbsoluta}>{n.creado_en_texto || formatearFecha(n.creado_en)}{n.creado_por ? ` · por ${n.creado_por}` : ''}</Text>
+                  </View>
+                );
+              })}
+            </>
+          )}
+          <Text style={styles.footer}>Actualización automática cada 15 s · {filtradas.length} visibles · {noLeidas} sin leer</Text>
         </ScrollView>
       )}
 
@@ -457,7 +516,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-  lista: { padding: 16, paddingBottom: 90 },
+  lista: { padding: 16, paddingBottom: 90, gap: 0 },
+  kpiRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  kpiMini: { flex: 1, backgroundColor: '#1e293b', borderRadius: 12, padding: 12, alignItems: 'center', borderTopWidth: 3 },
+  kpiMiniLabel: { color: '#94a3b8', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  kpiMiniValor: { color: '#f8fafc', fontSize: 20, fontWeight: 'bold', marginTop: 4 },
+  filtrosFila: { flexDirection: 'row', gap: 8, paddingBottom: 12, paddingRight: 16 },
+  filtroChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#1e293b', borderWidth: 1, borderColor: '#334155' },
+  filtroChipActivo: { backgroundColor: '#38bdf8', borderColor: '#38bdf8' },
+  filtroChipTexto: { color: '#94a3b8', fontSize: 13, fontWeight: '600' },
+  filtroChipTextoActivo: { color: '#0f172a' },
   footer: {
     color: '#64748b',
     fontSize: 13,
@@ -467,26 +535,44 @@ const styles = StyleSheet.create({
   },
   tarjeta: {
     backgroundColor: '#1e293b',
-    borderRadius: 14,
+    borderRadius: 16,
     borderLeftWidth: 4,
     padding: 16,
-    marginBottom: 14,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
+  tarjetaNueva: { backgroundColor: '#1e293b', borderWidth: 1, borderColor: 'rgba(56,189,248,0.15)' },
   tarjetaEncabezado: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    gap: 8,
   },
-  tipoIcono: { fontSize: 18, marginRight: 6 },
-  tipoTexto: { fontSize: 13, fontWeight: 'bold', flex: 1 },
+  tipoPill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, borderWidth: 1, gap: 4 },
+  tipoPillLeida: { backgroundColor: 'rgba(100,116,139,0.12)', borderColor: 'rgba(100,116,139,0.2)' },
+  tipoIcono: { fontSize: 14 },
+  tipoTexto: { fontSize: 12, fontWeight: '800', letterSpacing: 0.3 },
+  fechaRelativa: { color: '#38bdf8', fontSize: 12, fontWeight: '600', marginLeft: 'auto' },
   fecha: { color: '#64748b', fontSize: 12 },
-  titulo: { color: '#f8fafc', fontSize: 17, fontWeight: 'bold' },
+  fechaAbsoluta: { color: '#64748b', fontSize: 11, marginTop: 8 },
+  tarjetaPie: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  titulo: { color: '#f8fafc', fontSize: 16, fontWeight: 'bold', lineHeight: 22 },
   tituloLeida: { color: '#94a3b8', fontWeight: '600' },
   mensaje: { color: '#cbd5e1', fontSize: 14, marginTop: 6, lineHeight: 20 },
   mensajeLeida: { color: '#64748b' },
-  tarjetaLeida: { backgroundColor: '#0f172a', opacity: 0.7, borderLeftWidth: 3 },
-  separadorLeidas: { color: '#475569', fontSize: 12, textAlign: 'center', marginVertical: 12, letterSpacing: 1, fontWeight: '600' },
-  toqueHint: { color: '#38bdf8', fontSize: 11, marginTop: 6, fontStyle: 'italic' },
+  tarjetaLeida: { backgroundColor: '#0f172a', opacity: 0.75, borderLeftWidth: 0, borderWidth: 1, borderColor: '#1e293b' },
+  separadorWrap: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 14 },
+  separadorLinea: { flex: 1, height: 1, backgroundColor: '#334155' },
+  separadorLeidas: { color: '#475569', fontSize: 11, textAlign: 'center', letterSpacing: 1.2, fontWeight: '700' },
+  toqueHint: { color: '#38bdf8', fontSize: 11, fontWeight: '600' },
+  badgeNueva: { backgroundColor: '#ef4444', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginLeft: 8 },
+  badgeNuevaTexto: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  badgeLeida: { backgroundColor: 'rgba(100,116,139,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginLeft: 8 },
+  badgeLeidaTexto: { color: '#64748b', fontSize: 10, fontWeight: '700' },
   fab: {
     position: 'absolute',
     bottom: 24,
