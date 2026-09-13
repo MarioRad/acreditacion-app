@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { verificarCodigo } from './api';
+import { verificarCodigo, entregarMenu, obtenerMenuResumen } from './api';
 import { tieneRestriccionAlimentaria } from './OverlayResultado';
 import { prepararAudio, sonarBipError, sonarBipOk } from './sonidos';
 
@@ -19,12 +19,28 @@ export default function PantallaEntregaMenu({ sesion, alExpirarSesion, onVolver 
   const [procesando, setProcesando] = useState(false);
   const [antorcha, setAntorcha] = useState(false);
   const [error, setError] = useState('');
+  const [resumen, setResumen] = useState(null);
+  const [codigoActual, setCodigoActual] = useState('');
 
   const bloqueadoRef = useRef(false);
 
   useEffect(() => {
     prepararAudio();
   }, []);
+
+  const cargarResumen = useCallback(async () => {
+    try {
+      const r = await obtenerMenuResumen(sesion);
+      if (r && r.servicios) setResumen(r);
+      else if (r && r.resumen) setResumen(r.resumen);
+    } catch (_) {}
+  }, [sesion]);
+
+  useEffect(() => {
+    cargarResumen();
+    const id = setInterval(cargarResumen, 15000);
+    return () => clearInterval(id);
+  }, [cargarResumen]);
 
   const reanudar = useCallback(() => {
     bloqueadoRef.current = false;
@@ -39,13 +55,22 @@ export default function PantallaEntregaMenu({ sesion, alExpirarSesion, onVolver 
       if (bloqueadoRef.current) return;
       bloqueadoRef.current = true;
       setProcesando(true);
+      setCodigoActual(data);
       try {
         const r = await verificarCodigo(sesion, data);
         if (r.encontrado) {
-          sonarBipOk();
-          Vibration.vibrate(120);
-          setDatos(r);
-          setEstado('confirmar');
+          if (r.servicio && r.servicio.yaRetirado) {
+            sonarBipError();
+            Vibration.vibrate([0, 90, 70, 90]);
+            setDatos(r);
+            setError(`Ya retiró ${r.servicio.titulo || 'su porción'}`);
+            setEstado('no-encontrado');
+          } else {
+            sonarBipOk();
+            Vibration.vibrate(120);
+            setDatos(r);
+            setEstado('confirmar');
+          }
         } else {
           sonarBipError();
           Vibration.vibrate([0, 90, 70, 90]);
@@ -68,10 +93,40 @@ export default function PantallaEntregaMenu({ sesion, alExpirarSesion, onVolver 
     [sesion, alExpirarSesion]
   );
 
-  const confirmarEntrega = () => {
-    setEstado('entregado');
-    sonarBipOk();
-    Vibration.vibrate(120);
+  const confirmarEntrega = async () => {
+    setProcesando(true);
+    try {
+      const r = await entregarMenu(sesion, codigoActual);
+      if (r && r.yaRetirado) {
+        sonarBipError();
+        Vibration.vibrate([0, 90, 70, 90]);
+        setError(r.mensaje || 'Ya había retirado su porción');
+        setEstado('no-encontrado');
+      } else {
+        setEstado('entregado');
+        sonarBipOk();
+        Vibration.vibrate(120);
+        cargarResumen();
+      }
+    } catch (e) {
+      if (e.sesionExpirada) {
+        alExpirarSesion();
+        return;
+      }
+      // fallback: si backend no tiene endpoint (404), considerar entregado localmente
+      if (e.status === 404) {
+        setEstado('entregado');
+        sonarBipOk();
+        Vibration.vibrate(120);
+      } else {
+        sonarBipError();
+        Vibration.vibrate([0, 90, 70, 90]);
+        setError(e.message || 'No se pudo registrar la entrega');
+        setEstado('no-encontrado');
+      }
+    } finally {
+      setProcesando(false);
+    }
   };
 
   if (!permiso) {
@@ -118,6 +173,15 @@ export default function PantallaEntregaMenu({ sesion, alExpirarSesion, onVolver 
           <Text style={styles.botonBarraTexto}>{antorcha ? '🔆' : '🔅'}</Text>
         </Pressable>
       </View>
+      {resumen && resumen.servicios ? (
+        <View style={styles.resumenBar}>
+          {resumen.servicios.slice(0, 2).map((s) => (
+            <Text key={s.id} style={styles.resumenTexto}>
+              {s.titulo}: {s.asistentes} entregados
+            </Text>
+          ))}
+        </View>
+      ) : null}
 
       {procesando ? (
         <View style={styles.cargando} pointerEvents="none">
@@ -220,6 +284,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15,23,42,0.75)',
   },
   barraTitulo: { color: '#f8fafc', fontSize: 17, fontWeight: 'bold' },
+  resumenBar: {
+    position: 'absolute',
+    top: 88,
+    left: 12,
+    right: 12,
+    backgroundColor: 'rgba(14,165,233,0.9)',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  resumenTexto: { color: '#fff', fontSize: 12, fontWeight: '600' },
   botonBarra: {
     paddingHorizontal: 12,
     paddingVertical: 8,

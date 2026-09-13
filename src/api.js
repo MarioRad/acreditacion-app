@@ -143,3 +143,159 @@ export async function verificarCodigo(sesion, codigo) {
     throw e;
   }
 }
+
+export async function entregarMenu(sesion, codigo) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/menu/entregar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sesion.token}` },
+      body: JSON.stringify({ codigo }),
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+export async function obtenerMenuResumen(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/menu/resumen`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e.status === 404) return { resumen: null, fallback: true };
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+export async function obtenerTalleresAsignados(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/talleres/asignados`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e.status === 404) return { talleres: [] };
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+export async function registrarAsistenciaTaller(sesion, { codigo, dni, tallerId, tipo }) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/taller/asistencia`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sesion.token}` },
+      body: JSON.stringify({ codigo, dni, tallerId, tipo }),
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+export async function obtenerEstadoTaller(sesion, tallerId) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/talleres/${tallerId}/estado`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e.status === 404) return null;
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+export async function obtenerResumenDia(sesion, fecha) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  const qs = fecha ? `?fecha=${encodeURIComponent(fecha)}` : '';
+  try {
+    return await pedir(`${base}/api/mobile/resumen/dia${qs}`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) {
+      const err = new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      err.sesionExpirada = true;
+      throw err;
+    }
+    if (e.status === 404) return null;
+    if (e instanceof TypeError || !e.status) {
+      const err = new Error('Sin conexión con el servidor.');
+      err.sinConexion = true;
+      throw err;
+    }
+    throw e;
+  }
+}
+
+export async function obtenerAsignaciones(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/asignaciones`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 404) return { asignaciones: [] };
+    throw e;
+  }
+}
+
+export async function crearAsignacion(sesion, { operador, tallerId, dia, bloqueId }) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/asignaciones`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${sesion.token}` },
+    body: JSON.stringify({ operador, tallerId, dia, bloqueId }),
+  });
+}

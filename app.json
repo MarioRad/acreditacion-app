@@ -22,7 +22,9 @@
       },
       "permissions": [
         "CAMERA",
-        "VIBRATE"
+        "VIBRATE",
+        "NOTIFICATIONS",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -36,7 +38,15 @@
         {
           "faceIDPermission": "Usar Face ID para iniciar sesión en la app de acreditación."
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#16a34a"
+        }
+      ],
+      "expo-asset"
     ]
   }
 }

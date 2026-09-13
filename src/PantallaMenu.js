@@ -8,6 +8,7 @@ const OPCIONES = [
     titulo: 'Acreditaciones',
     descripcion: 'Escaneo de QR para acreditar asistentes',
     color: '#16a34a',
+    roles: ['admin','superior','operador'],
   },
   {
     clave: 'entregaMenu',
@@ -15,6 +16,15 @@ const OPCIONES = [
     titulo: 'Entrega de Menú',
     descripcion: 'Escaneo de QR y confirmación de entrega',
     color: '#ea580c',
+    roles: ['admin','superior','menu'],
+  },
+  {
+    clave: 'asistenciaTaller',
+    icono: '📋',
+    titulo: 'Asistencia Taller',
+    descripcion: 'Ingreso/egreso por taller asignado',
+    color: '#7c3aed',
+    roles: ['admin','superior','operador'],
   },
   {
     clave: 'notificaciones',
@@ -22,16 +32,43 @@ const OPCIONES = [
     titulo: 'Notificaciones',
     descripcion: 'Avisos y novedades del encuentro',
     color: '#0284c7',
+    roles: ['admin','superior','menu','operador'],
+  },
+  {
+    clave: 'dashboard',
+    icono: '📊',
+    titulo: 'Dashboard Admin',
+    descripcion: 'Estado por taller y menús en tiempo real',
+    color: '#0ea5e9',
+    roles: ['admin','superior'],
+  },
+  {
+    clave: 'resumenDia',
+    icono: '📅',
+    titulo: 'Resumen del Día',
+    descripcion: 'Cierre de jornada',
+    color: '#475569',
+    roles: ['admin','superior'],
+  },
+  {
+    clave: 'asignaciones',
+    icono: '👥',
+    titulo: 'Asignaciones',
+    descripcion: 'Operador → Taller (Superior)',
+    color: '#f59e0b',
+    roles: ['admin','superior'],
   },
 ];
 
 export default function PantallaMenu({ sesion, alElegir, cerrarSesion }) {
+  const rol = sesion?.rol || 'operador';
+  const visibles = OPCIONES.filter((op) => !op.roles || op.roles.includes(rol));
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.contenedor}>
       <Image source={require('../assets/logo.png')} style={styles.logo} resizeMode="contain" />
       {sesion ? (
         <View style={styles.sesion}>
-          <Text style={styles.sesionNombre}>{sesion.nombre}</Text>
+          <Text style={styles.sesionNombre}>{sesion.nombre} · {rol}</Text>
           <Pressable onPress={cerrarSesion}>
             <Text style={styles.cerrar}>Cerrar sesión</Text>
           </Pressable>
@@ -40,7 +77,7 @@ export default function PantallaMenu({ sesion, alElegir, cerrarSesion }) {
 
       <Text style={styles.titulo}>¿Qué necesitás hacer?</Text>
 
-      {OPCIONES.map((op) => (
+      {visibles.map((op) => (
         <Pressable key={op.clave} style={styles.opcion} onPress={() => alElegir(op.clave)}>
           <View style={[styles.icono, { backgroundColor: op.color }]}>
             <Text style={styles.iconoTexto}>{op.icono}</Text>
@@ -52,6 +89,8 @@ export default function PantallaMenu({ sesion, alElegir, cerrarSesion }) {
           <Text style={styles.flecha}>›</Text>
         </Pressable>
       ))}
+      {sesion && visibles.length===0 ? <Text style={styles.titulo}>Sin opciones habilitadas para tu rol</Text> : null}
+      {!sesion ? <Text style={styles.pista}>Iniciá sesión para ver opciones</Text> : null}
     </ScrollView>
   );
 }
@@ -105,4 +144,5 @@ const styles = StyleSheet.create({
   opcionTitulo: { color: '#f8fafc', fontSize: 18, fontWeight: 'bold' },
   opcionDescripcion: { color: '#94a3b8', fontSize: 13, marginTop: 3 },
   flecha: { color: '#64748b', fontSize: 28, marginLeft: 8 },
+  pista: { color: '#64748b', fontSize: 13, textAlign: 'center', marginTop: 12 },
 });

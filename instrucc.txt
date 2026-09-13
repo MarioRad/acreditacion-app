@@ -1,0 +1,27 @@
+Tenés 3 formas, depende si querés probar rápido o instalar APK:
+1. Desarrollo rápido con Expo Go (recomendado para probar)
+Requisitos: Node 18+ y la app Expo Go en el Android (play.google.com/store/apps/details?id=host.exp.exponent).
+npm install
+# 1. Configurá el backend en src/config.js:1 - debe ser accesible desde el celular
+# Actual: http://192.168.100.20:3000 -> el celu y la PC tienen que estar en la misma Wi-Fi
+#         y el backend (dramatiza-local) corriendo en 192.168.100.20 (DB remota: postgres@192.168.100.129:5432/inscripciones).
+
+npx expo start
+Escaneá el QR que aparece en terminal/navegador con Expo Go. Si no conecta probá:
+npx expo start --tunnel
+2. Instalación nativa directa en dispositivo (tenés android/ ya generado)
+Requiere Android SDK + adb y el celu con Depuración USB activada (Opciones de desarrollador) conectado por USB.
+npm install
+adb devices  # tiene que listar tu dispositivo
+
+# Debug (instala directo):
+npx expo run:android
+
+# Release:
+npx expo run:android --variant release
+3. Generar APK para compartir/instalar sin cable (EAS Build)
+npm install -g eas-cli
+eas login
+eas build -p android --profile preview
+# te da un link para descargar e instalar el APK en cualquier Android
+Importante: Antes de loguearte en la app necesitás un usuario del panel admin con permiso Acreditación. El login es contra POST /api/mobile/login del SERVIDOR_URL.
