@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { obtenerMenuResumen, obtenerResumenDia } from './api';
+import { obtenerDashboardCompleto, obtenerMenuResumen, obtenerResumenDia } from './api';
 
 function formatearMoneda(n){ return `$${Number(n||0).toLocaleString('es-AR')}` }
 
@@ -9,34 +9,37 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
   const [error, setError] = useState('');
   const [resumenDia, setResumenDia] = useState(null);
   const [resumenMenu, setResumenMenu] = useState(null);
+  const [dashboardWeb, setDashboardWeb] = useState(null);
   const [refrescando, setRefrescando] = useState(false);
 
   const cargar = useCallback(async () => {
     setError('');
     try {
+      // Intentar dashboard idéntico a web (5 fuentes) — mismo cálculo que public/js/admin.js cargarDashboard
+      const dash = await obtenerDashboardCompleto(sesion).catch(()=>null);
+      if (dash) {
+        setDashboardWeb(dash);
+        setResumenDia(null);
+        // para Menús hoy usamos resumen separado si disponible, sino no
+        const rm = await obtenerMenuResumen(sesion).catch(()=>null);
+        const rmData = rm && rm.ok===true ? rm : rm;
+        const rmNorm = rmData?.servicios ? rmData : rmData?.resumen || rmData;
+        setResumenMenu(rmNorm || null);
+        return;
+      }
+      // Fallback: endpoint agregado viejo /api/mobile/resumen/dia (192.168.100.20 sin dashboard nuevo)
+      setDashboardWeb(null);
       const [rd, rm] = await Promise.all([
         obtenerResumenDia(sesion).catch(()=>null),
         obtenerMenuResumen(sesion).catch(()=>null),
       ]);
-      let rdFinal = rd;
-      // fallback si backend 192.168.100.20 aún no tiene /resumen/dia (404->null): intentar /api/talleres público
-      if (!rdFinal || (!rdFinal.porTaller && !rdFinal.talleres)) {
-        try {
-          const base = String(sesion.servidorUrl||'').replace(/\/+$/,'');
-          const res = await fetch(`${base}/api/talleres`, { headers: { 'Content-Type':'application/json' } });
-          if (res.ok) {
-            const talleres = await res.json();
-            const mockPorTaller = (Array.isArray(talleres)? talleres : []).map(t=> ({
-              taller: t.nombre, nombre: t.nombre, fecha: t.fecha||'', hora: t.hora||'', cupo: Number(t.cupo||0), inscriptos: Number(t.inscriptos||0), acreditados: 0, porcentaje: 0,
-            }));
-            rdFinal = rdFinal || { porTaller: mockPorTaller, totalAcreditados: 0, totalInscriptos: mockPorTaller.reduce((s,x)=>s+x.inscriptos,0) };
-            if (rdFinal && !rdFinal.porTaller) rdFinal.porTaller = mockPorTaller;
-          }
-        } catch (_) {}
-      }
-      setResumenDia(rdFinal);
-      setResumenMenu(rm?.servicios ? rm : rm?.resumen || rm);
-      if (!rdFinal && !rm) setError('Sin datos del backend. Verificá que 192.168.100.20 tenga el deploy nuevo (git pull + pm2 restart).');
+      const rdData = rd && rd.ok === true ? rd : rd;
+      const rmData = rm && rm.ok === true ? rm : rm;
+      if (rdData && !rdData.porTaller && rdData.talleres) rdData.porTaller = rdData.talleres;
+      setResumenDia(rdData || null);
+      const rmNorm = rmData?.servicios ? rmData : rmData?.resumen || rmData;
+      setResumenMenu(rmNorm || null);
+      if (!rdData && !rmNorm) setError('Sin datos del backend. Verificá que 192.168.100.20 tenga el deploy nuevo (git pull + pm2 restart).');
     } catch (e) {
       if (e.sesionExpirada) { alExpirarSesion(); return; }
       setError(e.message || 'No se pudo cargar');
@@ -50,25 +53,69 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
 
   if (cargando) return <View style={styles.centro}><ActivityIndicator color="#0ea5e9" size="large"/><Text style={styles.cargandoTxt}>Cargando dashboard…</Text></View>;
 
-  const porTaller = resumenDia?.porTaller || resumenDia?.talleres || [];
-  const ranking = [...porTaller].sort((a,b)=> (a.inscriptos||0)-(b.inscriptos||0)).slice(0,5);
-  const ultimos5 = resumenDia?.ultimos5 || [];
-  // Inscriptos en general = encuentro_inscripciones (66), Inscriptos a talleres = encuentroConTaller (52), faltantes = encuentroSin (14), acreditados = DNI único en acreditaciones
-  const inscriptosEvento = resumenDia?.inscriptosEvento ?? resumenDia?.inscriptos_evento ?? null;
-  const inscriptosTalleres = resumenDia?.inscriptosTalleres ?? resumenDia?.inscriptos_talleres ?? resumenMenu?.totalInscriptos ?? null;
-  const encuentroConTaller = resumenDia?.encuentroConTaller ?? resumenDia?.encuentro_con_taller ?? null;
-  const encuentroSin = resumenDia?.encuentroSin ?? resumenDia?.encuentro_sin ?? null;
-  const inscriptosTalleresDisplay = inscriptosTalleres != null ? inscriptosTalleres : porTaller.reduce((s,t)=>s+Number(t.inscriptos||0),0);
-  const totalCapacidad = porTaller.reduce((s,t)=>s+Number(t.cupo||0),0);
-  const totalAcreditados = resumenDia?.totalAcreditados ?? resumenDia?.total ?? 0;
-  const totalMenus = resumenDia?.totalMenus ?? 0;
-  // KPI2 debe reflejar web: encuentroConTaller / encuentroSin (ej 52/14). Fallback a inscriptosTalleres si backend viejo.
+  // Si hay dashboardWeb (5 fuentes) usar cálculo idéntico a public/js/admin.js cargarDashboard
+  let porTaller, ranking, rankingMax, ultimos5, inscriptosEvento, inscriptosTalleres, encuentroConTaller, encuentroSin, inscriptosTalleresDisplay, totalCapacidad, recaudado, cuotasPagadas;
+  if (dashboardWeb) {
+    const tRes = dashboardWeb.talleres || [];
+    const iRes = dashboardWeb.inscripciones || [];
+    const aRes = dashboardWeb.asistentes || [];
+    const eRes = dashboardWeb.encuentro || { total: 0, personas: [] };
+    const pRes = dashboardWeb.pagos || [];
+    const personas = Array.isArray(eRes.personas) ? eRes.personas : [];
+    const totalE = typeof eRes.total === 'number' ? eRes.total : personas.length;
+    // totalGeneral = encuentro total (web prioridad)
+    let totalGeneral = totalE;
+    if (!totalGeneral && Array.isArray(aRes)) totalGeneral = aRes.length;
+    if (!totalGeneral && Array.isArray(iRes)) totalGeneral = new Set(iRes.map(x=>String(x.dni))).size;
+    inscriptosEvento = totalGeneral || null;
+    inscriptosTalleres = Array.isArray(aRes) ? aRes.length : new Set(iRes.map(x=>String(x.dni))).size;
+    // ranking: agrupar por pareja_id MAX inscriptos (admin.js:3104)
+    const mapa = new Map();
+    for (const t of tRes) {
+      const key = t.pareja_id ? Number(t.pareja_id) : Number(t.id);
+      const base = String(t.nombre||'').replace(/\s*\(\d+°\s*parte\)\s*/gi,'').trim() || t.nombre;
+      if (!mapa.has(key)) mapa.set(key, { id:key, nombre: base, cupo:Number(t.cupo)||0, inscriptos:Number(t.inscriptos)||0 });
+      else { const cur=mapa.get(key); cur.inscriptos=Math.max(cur.inscriptos, Number(t.inscriptos)||0); }
+    }
+    porTaller = [...mapa.values()];
+    totalCapacidad = porTaller.reduce((s,t)=>s+Number(t.cupo||0),0);
+    inscriptosTalleresDisplay = inscriptosTalleres;
+    encuentroConTaller = personas.filter(p=>p.tiene_talleres).length;
+    encuentroSin = Math.max(0, Number(totalGeneral||0) - encuentroConTaller);
+    if (!personas.length) { encuentroConTaller = inscriptosTalleres; encuentroSin = Math.max(0, Number(totalGeneral||0)-inscriptosTalleres); }
+    // ranking
+    const ordenado=[...porTaller].sort((a,b)=>Number(a.inscriptos)-Number(b.inscriptos));
+    ranking=ordenado.slice(0,5);
+    rankingMax=Math.max(...ranking.map(t=>Number(t.inscriptos||0)),1);
+    // ultimos5 DNI único más recientes (admin.js:3254)
+    const ordenadas=[...iRes].sort((a,b)=> new Date(b.creado_en||0)-new Date(a.creado_en||0));
+    const porDni=new Map();
+    for(const r of ordenadas){ const dni=String(r.dni||'').trim(); if(!dni||porDni.has(dni)) continue; porDni.set(dni,r); if(porDni.size>=5) break; }
+    ultimos5=[...porDni.values()].map(r=>{ const filas=iRes.filter(x=>String(x.dni)===String(r.dni)); const talleres=[...new Set(filas.map(x=>x.taller).filter(Boolean))].join(', '); return { dni:String(r.dni), nombre:r.nombre||'', apellido:r.apellido||'', taller:talleres||r.taller||'', estado_pago:r.estado_pago||'no_pagado', creado_en:r.creado_en||'' }; });
+    // recaudado (admin.js:3164)
+    recaudado=0; cuotasPagadas=0;
+    for(const ap of pRes){ const cuotas=Array.isArray(ap.cuotas)?ap.cuotas:[]; for(const c of cuotas){ recaudado+=Number(c.monto)||0; cuotasPagadas++; } }
+  } else {
+    porTaller = resumenDia?.porTaller || resumenDia?.talleres || [];
+    const rankingOrdenado = [...porTaller].sort((a,b)=> (Number(a.inscriptos||0))-(Number(b.inscriptos||0)));
+    ranking = rankingOrdenado.slice(0,5);
+    rankingMax = Math.max(...ranking.map(t=> Number(t.inscriptos||0)), 1);
+    ultimos5 = resumenDia?.ultimos5 || [];
+    inscriptosEvento = resumenDia?.inscriptosEvento ?? resumenDia?.inscriptos_evento ?? null;
+    inscriptosTalleres = resumenDia?.inscriptosTalleres ?? resumenDia?.inscriptos_talleres ?? resumenMenu?.totalInscriptos ?? null;
+    encuentroConTaller = resumenDia?.encuentroConTaller ?? resumenDia?.encuentro_con_taller ?? null;
+    encuentroSin = resumenDia?.encuentroSin ?? resumenDia?.encuentro_sin ?? null;
+    inscriptosTalleresDisplay = inscriptosTalleres != null ? inscriptosTalleres : porTaller.reduce((s,t)=>s+Number(t.inscriptos||0),0);
+    totalCapacidad = porTaller.reduce((s,t)=>s+Number(t.cupo||0),0);
+    recaudado = resumenDia?.recaudado ?? 0;
+    cuotasPagadas = resumenDia?.cuotasPagadas ?? resumenDia?.cuotas_pagadas ?? 0;
+  }
   const kpi2Valor = (encuentroConTaller != null && encuentroSin != null) ? `${encuentroConTaller} / ${encuentroSin}` : `${inscriptosTalleresDisplay} / ${totalCapacidad}`;
   const kpi2Sub = (encuentroConTaller != null && encuentroSin != null)
     ? `${encuentroSin} sin taller · ${inscriptosEvento ? Math.round(encuentroConTaller/inscriptosEvento*100) : 0}% con taller` + (inscriptosTalleres != null && inscriptosTalleres !== encuentroConTaller ? ` · ${inscriptosTalleres} DNI único con taller (+${inscriptosTalleres - encuentroConTaller} fuera de encuentro)` : '')
-    : `${Math.round(inscriptosTalleresDisplay/totalCapacidad*100)||0}% ocupación · ${inscriptosTalleres != null ? 'DNI único' : 'fallback suma'}`;
+    : `${Math.round(inscriptosTalleresDisplay/totalCapacidad*100)||0}% ocupación · ${inscriptosTalleres != null ? 'DNI único' : 'sin datos encuentro'}`;
   const pctOcupacion = totalCapacidad ? Math.round(inscriptosTalleresDisplay/totalCapacidad*100) : 0;
-  const pctConTaller = inscriptosEvento ? Math.round((encuentroConTaller||inscriptosTalleresDisplay)/inscriptosEvento*100) : pctOcupacion;
+  const pctConTaller = inscriptosEvento ? Math.round((encuentroConTaller!=null?encuentroConTaller:inscriptosTalleresDisplay)/inscriptosEvento*100) : pctOcupacion;
 
   return (
     <View style={styles.flex}>
@@ -94,35 +141,40 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
             <Text style={styles.kpiIcon}>🎓</Text>
           </View>
           <View style={[styles.kpiCard, { borderTopColor:'#f59e0b' }]}>
-            <Text style={styles.kpiLabel}>Acreditados (DNI único)</Text>
-            <Text style={styles.kpiValue}>{totalAcreditados} {totalMenus ? `· ${totalMenus} menús` : ''}</Text>
-            <Text style={styles.kpiSub}>DNI único · menús entregados hoy</Text>
-            <Text style={styles.kpiIcon}>✅</Text>
+            <Text style={styles.kpiLabel}>Monto recaudado</Text>
+            <Text style={styles.kpiValue}>{formatearMoneda(recaudado)}</Text>
+            <Text style={styles.kpiSub}>{cuotasPagadas} cuotas registradas · actualizado</Text>
+            <Text style={styles.kpiIcon}>💰</Text>
           </View>
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitulo}>Menús hoy (tiempo real)</Text>
-          {resumenMenu?.servicios ? (
-            resumenMenu.servicios.map((s)=> (
-              <View key={s.id} style={styles.fila}><Text style={styles.filaTitulo}>{s.titulo} · {s.dia}</Text><Text style={styles.filaValor}>{s.asistentes} entregados</Text></View>
-            ))
-          ) : <Text style={styles.vacio}>Sin datos de comidas</Text>}
+          {(() => {
+            const servicios = resumenMenu?.serviciosHoy || resumenMenu?.servicios || [];
+            if (!servicios.length) return <Text style={styles.vacio}>Sin datos de comidas</Text>;
+            return servicios.map((s)=> (
+              <View key={s.id || s.bloque_id} style={styles.fila}><Text style={styles.filaTitulo}>{s.titulo} · {s.dia}</Text><Text style={styles.filaValor}>{s.asistentes} entregados</Text></View>
+            ));
+          })()}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitulo}>Ranking — Talleres con menos inscriptos</Text>
-          <Text style={styles.ayuda}>Top 5 de menor a mayor ocupación</Text>
+          <Text style={styles.ayuda}>Top 5 de menor a mayor ocupación · {porTaller.length} talleres</Text>
           {ranking.length===0 ? <Text style={styles.vacio}>No hay talleres cargados.</Text> : ranking.map((t,i)=> {
-            const pct = t.cupo ? Math.round((t.inscriptos||0)/t.cupo*100) : 0;
+            const ins = Number(t.inscriptos||0);
+            const cupo = Number(t.cupo||0);
+            const pctCupo = cupo ? Math.round(ins/cupo*100) : 0;
+            const pctMax = rankingMax ? Math.round(ins/rankingMax*100) : 0;
             return (
               <View key={i} style={styles.rankingRow}>
                 <View style={{ flex:1 }}>
                   <Text style={styles.rankingLabel}>{t.taller || t.nombre}</Text>
-                  <Text style={styles.rankingMeta}>{t.inscriptos||0} inscriptos · cupo {t.cupo} · {pct}%</Text>
-                  <View style={styles.rankingBarWrap}><View style={[styles.rankingBar, { width: `${Math.min(100,pct)}%`, backgroundColor: pct>85 ? '#ef4444' : pct>60 ? '#f59e0b' : '#16a34a' }]} /></View>
+                  <Text style={styles.rankingMeta}>{cupo ? `${ins}/${cupo} · ${pctCupo}%` : `${ins} inscriptos`}</Text>
+                  <View style={styles.rankingBarWrap}><View style={[styles.rankingBar, { width: `${Math.min(100,pctMax)}%`, backgroundColor: pctCupo>=90 ? '#ef4444' : pctCupo>=70 ? '#f59e0b' : '#16a34a' }]} /></View>
                 </View>
-                <Text style={styles.rankingValor}>{t.inscriptos}</Text>
+                <Text style={styles.rankingValor}>{ins}</Text>
               </View>
             );
           })}
@@ -142,24 +194,6 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
               <Text style={styles.sub}>{u.creado_en ? String(u.creado_en).slice(0,10) : ''}</Text>
             </View>
           ))}
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitulo}>Talleres — detalle</Text>
-            <Text style={styles.ayuda}>{porTaller.length} talleres</Text>
-          </View>
-          {porTaller.map((t,i)=> (
-            <View key={i} style={styles.filaDetalle}>
-              <View style={{ flex:1 }}>
-                <Text style={styles.filaTitulo}>{t.taller || t.nombre}</Text>
-                <Text style={styles.sub}>{t.fecha} {t.hora} · cupo {t.cupo} · inscriptos {t.inscriptos} · acreditados {t.acreditados ?? 0}</Text>
-                <Text style={styles.sub}>Libres: {Math.max(0, (t.cupo||0)-(t.inscriptos||0))} · Pendientes: {Math.max(0,(t.inscriptos||0)-(t.acreditados||0))}</Text>
-              </View>
-              <Text style={styles.porcentaje}>{t.porcentaje ?? (t.cupo? Math.round(((t.acreditados||0)/t.cupo)*100):0)}%</Text>
-            </View>
-          ))}
-          {porTaller.length===0 ? <Text style={styles.vacio}>Sin detalle por taller — verificar GET /api/mobile/resumen/dia en 192.168.100.20</Text> : null}
         </View>
 
         <Text style={styles.footer}>Actualización automática cada 15 s · Capacidad locación en Configuración web</Text>

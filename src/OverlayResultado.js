@@ -237,5 +237,7 @@ const styles = StyleSheet.create({
     paddingTop: (StatusBar.currentHeight || 0) + 8,
     color: 'rgba(255,255,255,0.85)',
     fontSize: 14,
+    textAlign: 'center',
+    paddingBottom: 0,
   },
 });

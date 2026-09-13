@@ -299,6 +299,21 @@ export async function crearAsignacion(sesion, { operador, tallerId, dia, bloqueI
     body: JSON.stringify({ operador, tallerId, dia, bloqueId }),
   });
 }
+export async function actualizarAsignacion(sesion, id, { operador, tallerId, dia, bloqueId }) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/asignaciones/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${sesion.token}` },
+    body: JSON.stringify({ operador, tallerId, dia, bloqueId }),
+  });
+}
+export async function eliminarAsignacion(sesion, id) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/asignaciones/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${sesion.token}` },
+  });
+}
 
 export async function marcarNotificacionLeida(sesion, id) {
   const base = normalizarUrl(sesion.servidorUrl);
@@ -368,5 +383,43 @@ export async function obtenerTalleres(sesion) {
       const data = await res.json();
       return Array.isArray(data) ? data : data.talleres || [];
     } catch (_) { return []; }
+  }
+}
+
+export async function obtenerUsuarios(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/usuarios`, { headers: { Authorization: `Bearer ${sesion.token}` } });
+}
+export async function crearUsuario(sesion, { username, password, nombre, rol, activo }) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/usuarios`, { method: 'POST', headers: { Authorization: `Bearer ${sesion.token}` }, body: JSON.stringify({ username, password, nombre, rol, activo }) });
+}
+export async function actualizarUsuario(sesion, id, { nombre, rol, activo, password }) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/usuarios/${id}`, { method: 'PUT', headers: { Authorization: `Bearer ${sesion.token}` }, body: JSON.stringify({ nombre, rol, activo, password }) });
+}
+export async function eliminarUsuario(sesion, id) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/usuarios/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${sesion.token}` } });
+}
+
+async function pedirDashboard(sesion, path) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  return pedir(`${base}/api/mobile/dashboard/${path}`, { headers: { Authorization: `Bearer ${sesion.token}` } });
+}
+export async function obtenerDashboardCompleto(sesion) {
+  try {
+    const [talleres, inscripciones, asistentes, encuentro, pagos] = await Promise.all([
+      pedirDashboard(sesion, 'talleres').catch(e=>{ if(e.status===404) return null; throw e; }),
+      pedirDashboard(sesion, 'inscripciones').catch(e=>{ if(e.status===404) return null; throw e; }),
+      pedirDashboard(sesion, 'asistentes').catch(e=>{ if(e.status===404) return null; throw e; }),
+      pedirDashboard(sesion, 'encuentro').catch(e=>{ if(e.status===404) return null; throw e; }),
+      pedirDashboard(sesion, 'pagos').catch(e=>{ if(e.status===404) return null; throw e; }),
+    ]);
+    if (!talleres || !inscripciones || !asistentes || !encuentro || !pagos) return null;
+    return { talleres, inscripciones, asistentes, encuentro, pagos };
+  } catch (e) {
+    if (e.status===401){ const err=new Error('Sesión expirada'); err.sesionExpirada=true; throw err; }
+    return null;
   }
 }

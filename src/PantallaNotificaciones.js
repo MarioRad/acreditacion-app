@@ -199,9 +199,9 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
           <Text style={styles.botonBarraTexto}>‹ Volver</Text>
         </Pressable>
         <View style={styles.barraCentro}>
-          <Text style={styles.barraTitulo}>Notificaciones</Text>
-          {esAdmin ? <Text style={styles.badgeAdmin}>ADMIN</Text> : null}
-          {noLeidas>0 ? <Text style={styles.badgeNoLeidas}>{noLeidas} nuevas</Text> : null}
+          <Text style={styles.barraTitulo} numberOfLines={1} ellipsizeMode="tail">Notificaciones</Text>
+          {esAdmin ? <Text style={styles.badgeAdmin} numberOfLines={1}>ADMIN</Text> : null}
+          {noLeidas>0 ? <Text style={styles.badgeNoLeidas} numberOfLines={1}>{noLeidas} nuevas</Text> : null}
         </View>
         <View style={styles.barraAcciones}>
           {esAdmin ? (
@@ -440,14 +440,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 46,
+    paddingTop: 12,
     paddingBottom: 12,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(15,23,42,0.95)',
+    backgroundColor: '#0f172a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
     gap: 8,
   },
-  barraCentro: { flex: 1, alignItems: 'center' },
-  barraTitulo: { color: '#f8fafc', fontSize: 17, fontWeight: 'bold' },
+  barraCentro: { flex: 1, alignItems: 'center', justifyContent: 'center', minWidth: 0, paddingHorizontal: 4 },
+  barraTitulo: { color: '#f8fafc', fontSize: 15, fontWeight: 'bold', textAlign: 'center', flexShrink: 1 },
   badgeAdmin: {
     color: '#facc15',
     fontSize: 10,

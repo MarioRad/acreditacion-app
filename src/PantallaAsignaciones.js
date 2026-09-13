@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal } from 'react-native';
-import { obtenerAsignaciones, crearAsignacion, obtenerOperadores, obtenerTalleres } from './api';
+import { obtenerAsignaciones, crearAsignacion, actualizarAsignacion, eliminarAsignacion, obtenerOperadores, obtenerTalleres } from './api';
 
 function Dropdown({ label, value, placeholder, options, onSelect }) {
   const [open, setOpen] = useState(false);
@@ -46,6 +46,7 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
   const [msg, setMsg] = useState('');
   const [loadingOps, setLoadingOps] = useState(true);
   const [loadingTalleres, setLoadingTalleres] = useState(true);
+  const [editId, setEditId] = useState(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -128,14 +129,41 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
     if (!dia || !/^\d{4}-\d{2}-\d{2}$/.test(dia)) { setError('El taller seleccionado no tiene fecha válida'); return; }
     setEnviando(true); setError(''); setMsg('');
     try {
-      await crearAsignacion(sesion, { operador: op, tallerId: tid, dia });
-      setMsg(`Asignado ${op} → taller ${tid} día ${dia}`);
-      setOperador(''); setTallerId(''); setDiaAuto('');
+      if (editId) {
+        await actualizarAsignacion(sesion, editId, { operador: op, tallerId: tid, dia });
+        //setMsg(`Reasignado #${editId}: ${op} → taller ${tid} día ${dia}`);
+        setMsg(`Reasignado #${editId}: ${op} → taller ${tid} día ${dia}`);
+      } else {
+        await crearAsignacion(sesion, { operador: op, tallerId: tid, dia });
+        setMsg(`Asignado ${op} → taller ${tid} día ${dia}`);
+      }
+      setOperador(''); setTallerId(''); setDiaAuto(''); setEditId(null);
       cargar();
     } catch (e) {
       if (e.sesionExpirada) alExpirarSesion?.();
       setError(e.message || 'Error al asignar');
     } finally { setEnviando(false); }
+  };
+
+  const iniciarReasignar = (a) => {
+    setEditId(a.id);
+    setOperador(String(a.operador_username || a.operador || '').trim().toLowerCase());
+    setTallerId(String(a.taller_id || a.tallerId || ''));
+    setDiaAuto(String(a.dia||'').slice(0,10));
+    setError(''); setMsg('');
+  };
+  const cancelarEdicion = () => { setEditId(null); setOperador(''); setTallerId(''); setDiaAuto(''); setError(''); setMsg(''); };
+  const borrar = async (id) => {
+    setError(''); setMsg('');
+    try {
+      await eliminarAsignacion(sesion, id);
+      setMsg(`Asignación #${id} eliminada`);
+      if (editId===id) cancelarEdicion();
+      cargar();
+    } catch (e) {
+      if (e.sesionExpirada) alExpirarSesion?.();
+      setError(e.message || 'No se pudo eliminar');
+    }
   };
 
   const opcionesOperadores = operadores.map(o=> ({ value: o.username, label: `${o.username} — ${o.nombre||''}`.trim(), sub: o.nombre }));
@@ -154,8 +182,8 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
       </View>
       <ScrollView contentContainerStyle={styles.lista}>
         <View style={styles.card}>
-          <Text style={styles.cardTitulo}>Nueva asignación (Superior)</Text>
-          <Text style={styles.ayuda}>Solo usuarios con rol operador. El día se asigna automáticamente según el taller.</Text>
+          <Text style={styles.cardTitulo}>{editId ? `Reasignar #${editId}` : 'Nueva asignación (Superior)'}</Text>
+          <Text style={styles.ayuda}>{editId ? 'Modificá operador/taller y guardá. El día se actualiza según el taller.' : 'Solo usuarios con rol operador. El día se asigna automáticamente según el taller.'}</Text>
           {loadingOps ? <ActivityIndicator color="#f59e0b" style={{marginVertical:8}}/> : opcionesOperadores.length===0 ? (
             <>
               <View style={{ backgroundColor:'rgba(245,158,11,0.15)', padding:10, borderRadius:8, marginTop:6, borderWidth:1, borderColor:'rgba(245,158,11,0.3)' }}><Text style={{ color:'#fcd34d', fontSize:12, textAlign:'center' }}>Backend sin /api/mobile/operadores (deploy pendiente). Ingresá el username manualmente — existen {operadores.length===0 ? '3' : operadores.length} operadores: acredita, test, opera (ver Panel Admin → Usuarios).</Text></View>
@@ -176,18 +204,36 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
           </View>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {msg ? <Text style={styles.ok}>{msg}</Text> : null}
-          <Pressable style={[styles.botonCrear, (enviando || !operador || !tallerId) && { opacity:0.6 }]} onPress={asignar} disabled={enviando || !operador || !tallerId}>
-            {enviando ? <ActivityIndicator color="#fff"/> : <Text style={styles.botonCrearTxt}>Asignar</Text>}
-          </Pressable>
+          <View style={{ flexDirection:'row', gap:10, marginTop:14 }}>
+            <Pressable style={[styles.botonCrear, { flex:1 }, (enviando || !operador || !tallerId) && { opacity:0.6 }]} onPress={asignar} disabled={enviando || !operador || !tallerId}>
+              {enviando ? <ActivityIndicator color="#fff"/> : <Text style={styles.botonCrearTxt}>{editId ? 'Guardar' : 'Asignar'}</Text>}
+            </Pressable>
+            {editId ? <Pressable style={[styles.boton, { flex:1, backgroundColor:'#334155', justifyContent:'center' }]} onPress={cancelarEdicion}><Text style={styles.botonTxt}>Cancelar</Text></Pressable> : null}
+          </View>
         </View>
         <View style={styles.card}>
           <Text style={styles.cardTitulo}>Asignaciones vigentes</Text>
-          {cargando ? <ActivityIndicator color="#f59e0b"/> : asignaciones.length===0 ? <Text style={styles.vacio}>Sin asignaciones</Text> : asignaciones.map((a,i)=> (
-            <View key={i} style={styles.fila}>
-              <Text style={styles.filaTitulo}>{a.operador_username || a.operador || a.usuario} → {a.taller_nombre || a.taller || `Taller ${a.taller_id||a.tallerId}`}</Text>
-              <Text style={styles.filaSub}>{String(a.dia||'').slice(0,10)} {a.bloque_id?`· bloque ${a.bloque_id}`:''}</Text>
-            </View>
-          ))}
+          {cargando ? <ActivityIndicator color="#f59e0b"/> : asignaciones.length===0 ? <Text style={styles.vacio}>Sin asignaciones</Text> : asignaciones.map((a,i)=> {
+            const nombreFull = a.taller_nombre || a.taller || `Taller ${a.taller_id ||  a.taller_nombre || a.tallerId || '—'}`;
+            const palabras = String(nombreFull).trim().split(/\s+/);
+            const dos = palabras.slice(0,2).join(' ') + (palabras.length>2 ? '...' : '');
+            const diaRaw = String(a.dia||'').slice(0,10);
+            const m = diaRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            const diaFmt = m ? `${m[3]}-${m[2]}-${m[1]}` : diaRaw;
+            const operador = a.operador_username || a.operador || a.usuario || '—';
+            const por = a.creado_por || a.creadoPor || sesion?.usuario || 'admin';
+            return (
+              <View key={String(a.id||i)} style={styles.fila}>
+                <Text style={styles.filaTitulo} numberOfLines={1}>{operador} → {nombreFull}</Text>
+                {/* <Text style={styles.filaTitulo} numberOfLines={1}>{operador} → {dos} {diaFmt} - {por}</Text> */}
+                <Text style={styles.filaSub} numberOfLines={1}>F.: {diaFmt} / {por}  {a.bloque_titulo?`· ${a.bloque_titulo}`:''}</Text>
+                <View style={{flexDirection:'row', gap:6, marginTop:6}}>
+                  <Pressable onPress={()=>iniciarReasignar(a)} style={[styles.btnMini, {backgroundColor:'#334155'}]}><Text style={styles.btnMiniTxt}>Reasignar</Text></Pressable>
+                  <Pressable onPress={()=>borrar(a.id)} style={[styles.btnMini, {backgroundColor:'rgba(239,68,68,0.15)'}]}><Text style={[styles.btnMiniTxt,{color:'#f87171'}]}>Eliminar</Text></Pressable>
+                </View>
+              </View>
+            );
+          })}
         </View>
       </ScrollView>
     </View>
@@ -229,7 +275,9 @@ const styles = StyleSheet.create({
   botonCrear:{ backgroundColor:'#f59e0b', borderRadius:10, paddingVertical:12, alignItems:'center', marginTop:14 },
   botonCrearTxt:{ color:'#0f172a', fontWeight:'bold', fontSize:16 },
   fila:{ paddingVertical:10, borderTopWidth:1, borderTopColor:'#334155' },
-  filaTitulo:{ color:'#e2e8f0', fontWeight:'600' },
+  filaTitulo:{ color:'#e2e8f0', fontWeight:'600', flex:1 },
   filaSub:{ color:'#94a3b8', fontSize:13, marginTop:2 },
   vacio:{ color:'#64748b', fontSize:13 },
+  btnMini:{ paddingHorizontal:10, paddingVertical:6, borderRadius:8, minWidth:70, alignItems:'center' },
+  btnMiniTxt:{ color:'#e2e8f0', fontSize:12, fontWeight:'600' },
 });

@@ -123,7 +123,7 @@ export default function PantallaEscanner({ sesion, alExpirarSesion, onVolver }) 
         <Pressable style={styles.botonVolver} onPress={onVolver}>
           <Text style={styles.botonVolverTexto}>‹ Volver</Text>
         </Pressable>
-        <View style={{ flex: 1, marginLeft: 12 }}>
+        <View style={{ flex: 1, marginLeft: 15 }}>
           <Text style={styles.usuario}>{sesion.nombre}</Text>
           <Text style={styles.servidor}>
             ✓ {contadores.ok} · ⚠ {contadores.duplicado} · ✕ {contadores.error}
@@ -167,11 +167,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   visor: {
+    marginTop: 132,
+    marginBottom: 32,
     width: 260,
-    height: 260,
+    height: 280,
     borderWidth: 3,
     borderColor: 'rgba(255,255,255,0.9)',
     borderRadius: 18,
+
   },
   ayuda: {
     marginTop: 16,

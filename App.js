@@ -11,6 +11,7 @@ import PantallaAsistenciaTaller from './src/PantallaAsistenciaTaller';
 import PantallaDashboardAdmin from './src/PantallaDashboardAdmin';
 import PantallaResumenDia from './src/PantallaResumenDia';
 import PantallaAsignaciones from './src/PantallaAsignaciones';
+import PantallaUsuarios from './src/PantallaUsuarios';
 import SideBar from './src/SideBar';
 import { prepararAudio } from './src/sonidos';
 
@@ -24,6 +25,7 @@ const PANTALLAS_SESION = {
   dashboard: 'dashboard',
   resumenDia: 'resumenDia',
   asignaciones: 'asignaciones',
+  usuarios: 'usuarios',
 };
 
 const ROLES_HERENCIA = {
@@ -40,6 +42,7 @@ const PERMISOS_PANTALLA = {
   dashboard: ['admin','superior'],
   resumenDia: ['admin','superior'],
   asignaciones: ['admin','superior'],
+  usuarios: ['admin'],
 };
 
 export default function App() {
@@ -124,8 +127,7 @@ export default function App() {
   const mostrarTopBar = sesion && !cargando && !mostrarSplash && pantalla !== 'login';
 
   const onSelectSidebar = (clave) => {
-    if (['pagos','usuarios'].includes(clave)) {
-      // aún no implementado en móvil, mostrar dashboard como fallback con aviso
+    if (['pagos'].includes(clave)) {
       setPantalla('dashboard');
       return;
     }
@@ -173,6 +175,8 @@ export default function App() {
     contenido = <PantallaResumenDia sesion={sesion} alExpirarSesion={expirarSesion} onVolver={() => setPantalla('dashboard')} />;
   } else if (pantalla === 'asignaciones') {
     contenido = <PantallaAsignaciones sesion={sesion} alExpirarSesion={expirarSesion} onVolver={() => setPantalla('dashboard')} />;
+  } else if (pantalla === 'usuarios') {
+    contenido = <PantallaUsuarios sesion={sesion} alExpirarSesion={expirarSesion} onVolver={() => setPantalla('dashboard')} />;
   }
 
   return (
