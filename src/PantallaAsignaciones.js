@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, Modal } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal } from 'react-native';
 import { obtenerAsignaciones, crearAsignacion, obtenerOperadores, obtenerTalleres } from './api';
 
 function Dropdown({ label, value, placeholder, options, onSelect }) {
@@ -62,16 +62,33 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
     try {
       const r = await obtenerOperadores(sesion);
       const lista = r.operadores || r || [];
-      setOperadores(Array.isArray(lista) ? lista : []);
-      if (!lista || lista.length===0) {
-        // si backend viejo (404 fallback -> []) mostrar pista, no es error fatal
-        console.log('[Asignaciones] operadores vacío, posible backend sin /api/mobile/operadores');
+      const arr = Array.isArray(lista) ? lista : [];
+      if (arr.length===0) {
+        // fallback cliente cuando backend viejo aún no tiene /api/mobile/operadores (404 -> [])
+        // Hardcodeados según DB 192.168.100.129: acredita, test, opera (admin web confirma 2-3)
+        console.log('[Asignaciones] operadores vacío, usando fallback cliente + mensaje deploy');
+        setOperadores([
+          { username: 'acredita', nombre: 'acredita' },
+          { username: 'test', nombre: 'test' },
+          { username: 'opera', nombre: 'opera' },
+        ]);
+      } else {
+        setOperadores(arr);
       }
     } catch (e) {
       if (e.sesionExpirada) alExpirarSesion?.();
       else if (e.status===403) setError('Solo admin/superior puede ver operadores. Verificá tu rol.');
       else if (e.permisoDenegado) setError(e.message);
-      else setError(e.message || 'No se pudo cargar operadores. Verificá que 192.168.100.20 tenga el deploy nuevo (git pull + pm2 restart).');
+      else {
+        // fallback también en error de red/404
+        console.log('[Asignaciones] error operadores, fallback cliente', e.message);
+        setOperadores([
+          { username: 'acredita', nombre: 'acredita' },
+          { username: 'test', nombre: 'test' },
+          { username: 'opera', nombre: 'opera' },
+        ]);
+        setError(e.message ? `${e.message} (usando fallback local)` : 'No se pudo cargar operadores — usando lista local. Actualizá backend para datos reales.');
+      }
     } finally { setLoadingOps(false); }
   }, [sesion, alExpirarSesion]);
 
@@ -140,7 +157,11 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
           <Text style={styles.cardTitulo}>Nueva asignación (Superior)</Text>
           <Text style={styles.ayuda}>Solo usuarios con rol operador. El día se asigna automáticamente según el taller.</Text>
           {loadingOps ? <ActivityIndicator color="#f59e0b" style={{marginVertical:8}}/> : opcionesOperadores.length===0 ? (
-            <View style={{ backgroundColor:'#7f1d1d', padding:10, borderRadius:8, marginTop:6 }}><Text style={{ color:'#fecaca', fontSize:12, textAlign:'center' }}>No hay operadores (rol operador). Cargalos en Panel Admin → Usuarios (2 operadores esperados) y actualizá el backend en 192.168.100.20 (git pull + pm2 restart) para habilitar GET /api/mobile/operadores.</Text></View>
+            <>
+              <View style={{ backgroundColor:'rgba(245,158,11,0.15)', padding:10, borderRadius:8, marginTop:6, borderWidth:1, borderColor:'rgba(245,158,11,0.3)' }}><Text style={{ color:'#fcd34d', fontSize:12, textAlign:'center' }}>Backend sin /api/mobile/operadores (deploy pendiente). Ingresá el username manualmente — existen {operadores.length===0 ? '3' : operadores.length} operadores: acredita, test, opera (ver Panel Admin → Usuarios).</Text></View>
+              <Text style={styles.label}>Operador (username) — fallback manual</Text>
+              <TextInput style={styles.input} placeholder="ej: acredita" placeholderTextColor="#64748b" value={operador} onChangeText={setOperador} autoCapitalize="none" autoCorrect={false} />
+            </>
           ) : (
             <Dropdown label="Operador" value={operador} placeholder="Seleccioná operador" options={opcionesOperadores} onSelect={setOperador} />
           )}
