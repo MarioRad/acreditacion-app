@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const SECCIONES = [
   { titulo: 'Principal', items: [
@@ -22,12 +22,12 @@ const SECCIONES = [
 export default function SideBar({ visible, onClose, onSelect, sesion, vistaActiva }) {
   const [filtro, setFiltro] = useState('');
   const rol = sesion?.rol || 'operador';
-  if (!visible) return null;
   const filtrar = (label) => !filtro || label.toLowerCase().includes(filtro.toLowerCase());
   return (
-    <View style={styles.overlay}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <View style={styles.sidebar}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalRoot}>
+        <Pressable style={styles.backdrop} onPress={onClose} />
+        <View style={styles.sidebar}>
         <View style={styles.header}>
           <Text style={styles.logo}>🎭</Text>
           <View style={styles.brand}>
@@ -58,15 +58,17 @@ export default function SideBar({ visible, onClose, onSelect, sesion, vistaActiv
         </ScrollView>
         <View style={styles.footer}>
           <Text style={styles.userInfo} numberOfLines={1}>{sesion?.nombre || ''} · {rol}</Text>
+          <Text style={styles.userInfoSmall}>Toca fuera para cerrar</Text>
         </View>
       </View>
     </View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, flexDirection:'row', zIndex: 50 },
-  backdrop: { flex:1, backgroundColor:'rgba(0,0,0,0.5)' },
+  modalRoot: { flex:1, flexDirection:'row', backgroundColor:'rgba(0,0,0,0.5)' },
+  backdrop: { flex:1 },
   sidebar: { width: 280, backgroundColor:'#1e293b', borderRightWidth:1, borderRightColor:'#334155', paddingTop: 0 },
   header: { flexDirection:'row', alignItems:'center', gap:10, padding:16, paddingTop:46, borderBottomWidth:1, borderBottomColor:'#334155' },
   logo: { fontSize:28, width:36, height:36, textAlign:'center', backgroundColor:'#0f172a', borderRadius:8, overflow:'hidden', lineHeight:36 },
@@ -86,4 +88,5 @@ const styles = StyleSheet.create({
   linkLabelActivo: { color:'#fff' },
   footer: { padding:12, borderTopWidth:1, borderTopColor:'#334155' },
   userInfo: { color:'#94a3b8', fontSize:12 },
+  userInfoSmall: { color:'#475569', fontSize:10, marginTop:4 },
 });

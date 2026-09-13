@@ -15,11 +15,28 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
     setError('');
     try {
       const [rd, rm] = await Promise.all([
-        obtenerResumenDia(sesion),
-        obtenerMenuResumen(sesion),
+        obtenerResumenDia(sesion).catch(()=>null),
+        obtenerMenuResumen(sesion).catch(()=>null),
       ]);
-      setResumenDia(rd);
+      let rdFinal = rd;
+      // fallback si backend 192.168.100.20 aún no tiene /resumen/dia (404->null): intentar /api/talleres público
+      if (!rdFinal || (!rdFinal.porTaller && !rdFinal.talleres)) {
+        try {
+          const base = String(sesion.servidorUrl||'').replace(/\/+$/,'');
+          const res = await fetch(`${base}/api/talleres`, { headers: { 'Content-Type':'application/json' } });
+          if (res.ok) {
+            const talleres = await res.json();
+            const mockPorTaller = (Array.isArray(talleres)? talleres : []).map(t=> ({
+              taller: t.nombre, nombre: t.nombre, fecha: t.fecha||'', hora: t.hora||'', cupo: Number(t.cupo||0), inscriptos: Number(t.inscriptos||0), acreditados: 0, porcentaje: 0,
+            }));
+            rdFinal = rdFinal || { porTaller: mockPorTaller, totalAcreditados: 0, totalInscriptos: mockPorTaller.reduce((s,x)=>s+x.inscriptos,0) };
+            if (rdFinal && !rdFinal.porTaller) rdFinal.porTaller = mockPorTaller;
+          }
+        } catch (_) {}
+      }
+      setResumenDia(rdFinal);
       setResumenMenu(rm?.servicios ? rm : rm?.resumen || rm);
+      if (!rdFinal && !rm) setError('Sin datos del backend. Verificá que 192.168.100.20 tenga el deploy nuevo (git pull + pm2 restart).');
     } catch (e) {
       if (e.sesionExpirada) { alExpirarSesion(); return; }
       setError(e.message || 'No se pudo cargar');
