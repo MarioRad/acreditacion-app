@@ -52,11 +52,15 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
 
   const porTaller = resumenDia?.porTaller || resumenDia?.talleres || [];
   const ranking = [...porTaller].sort((a,b)=> (a.inscriptos||0)-(b.inscriptos||0)).slice(0,5);
-  const totalInscriptos = resumenMenu?.totalInscriptos ?? resumenDia?.totalInscriptos ?? porTaller.reduce((s,t)=>s+Number(t.inscriptos||0),0);
+  // Usuario aclara: inscriptos = totales en evento (encuentro_inscripciones), inscriptos a talleres = DNI único en inscripciones, acreditados = DNI único en acreditaciones
+  const inscriptosEvento = resumenDia?.inscriptosEvento ?? resumenDia?.inscriptos_evento ?? null;
+  const inscriptosTalleres = resumenDia?.inscriptosTalleres ?? resumenDia?.inscriptos_talleres ?? resumenMenu?.totalInscriptos ?? null;
+  // fallback si backend viejo: calcular distinct tallers sum no es correcto, usar inscriptosTalleres si existe si no porTaller sum (no distinct) solo como fallback
+  const inscriptosTalleresDisplay = inscriptosTalleres != null ? inscriptosTalleres : porTaller.reduce((s,t)=>s+Number(t.inscriptos||0),0);
   const totalCapacidad = porTaller.reduce((s,t)=>s+Number(t.cupo||0),0);
   const totalAcreditados = resumenDia?.totalAcreditados ?? resumenDia?.total ?? 0;
   const totalMenus = resumenDia?.totalMenus ?? 0;
-  const pctOcupacion = totalCapacidad ? Math.round(totalInscriptos/totalCapacidad*100) : 0;
+  const pctOcupacion = totalCapacidad ? Math.round(inscriptosTalleresDisplay/totalCapacidad*100) : 0;
 
   return (
     <View style={styles.flex}>
@@ -66,26 +70,26 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
       </View>
       {error ? <View style={styles.errorBox}><Text style={styles.errorTxt}>{error}</Text></View> : null}
       <ScrollView contentContainerStyle={styles.lista} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={cargar} tintColor="#0ea5e9"/>}>
-        <Text style={styles.resumenAyuda}>Vista general — similar al Panel Admin web</Text>
+        <Text style={styles.resumenAyuda}>Vista general — similar al Panel Admin web (DNI único)</Text>
         <View style={styles.kpiGrid}>
           <View style={[styles.kpiCard, { borderTopColor:'#38bdf8' }]}>
-            <Text style={styles.kpiLabel}>Inscriptos en general</Text>
-            <Text style={styles.kpiValue}>{totalInscriptos || '—'}</Text>
-            <Text style={styles.kpiSub}>{totalInscriptos ? `${totalInscriptos} DNI únicos` : 'DNI únicos'}</Text>
+            <Text style={styles.kpiLabel}>Inscriptos totales en el evento</Text>
+            <Text style={styles.kpiValue}>{inscriptosEvento != null ? inscriptosEvento : '—'}</Text>
+            <Text style={styles.kpiSub}>{inscriptosEvento != null ? `${inscriptosEvento} en encuentro` : 'encuentro_inscripciones'}</Text>
             <Text style={styles.kpiIcon}>👥</Text>
           </View>
           <View style={[styles.kpiCard, { borderTopColor:'#16a34a' }]}>
-            <Text style={styles.kpiLabel}>Inscriptos a talleres / Ocupación</Text>
-            <Text style={styles.kpiValue}>{totalInscriptos} / {totalCapacidad}</Text>
-            <Text style={styles.kpiSub}>{pctOcupacion}% ocupación</Text>
+            <Text style={styles.kpiLabel}>Inscriptos a talleres (DNI único)</Text>
+            <Text style={styles.kpiValue}>{inscriptosTalleresDisplay} / {totalCapacidad}</Text>
+            <Text style={styles.kpiSub}>{pctOcupacion}% ocupación · {inscriptosTalleres != null ? 'DNI único' : 'fallback suma'}</Text>
             <View style={styles.kpiProgress}><View style={[styles.kpiProgressBar, { width: `${Math.min(100,pctOcupacion)}%` }]} /></View>
             <Text style={styles.kpiIcon}>🎓</Text>
           </View>
           <View style={[styles.kpiCard, { borderTopColor:'#f59e0b' }]}>
-            <Text style={styles.kpiLabel}>Acreditados / Menús</Text>
-            <Text style={styles.kpiValue}>{totalAcreditados} · {totalMenus}</Text>
-            <Text style={styles.kpiSub}>Hoy · menús entregados</Text>
-            <Text style={styles.kpiIcon}>💰</Text>
+            <Text style={styles.kpiLabel}>Acreditados (DNI único)</Text>
+            <Text style={styles.kpiValue}>{totalAcreditados} {totalMenus ? `· ${totalMenus} menús` : ''}</Text>
+            <Text style={styles.kpiSub}>DNI único · menús entregados hoy</Text>
+            <Text style={styles.kpiIcon}>✅</Text>
           </View>
         </View>
 
