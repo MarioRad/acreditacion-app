@@ -299,3 +299,41 @@ export async function crearAsignacion(sesion, { operador, tallerId, dia, bloqueI
     body: JSON.stringify({ operador, tallerId, dia, bloqueId }),
   });
 }
+
+export async function marcarNotificacionLeida(sesion, id) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/notificaciones/${id}/leer`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) { const err=new Error('Sesión expirada'); err.sesionExpirada=true; throw err; }
+    throw e;
+  }
+}
+
+export async function marcarTodasLeidas(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/notificaciones/leer-todas`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) { const err=new Error('Sesión expirada'); err.sesionExpirada=true; throw err; }
+    throw e;
+  }
+}
+
+export async function obtenerDashboard(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/resumen/dia`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 404) return null;
+    throw e;
+  }
+}

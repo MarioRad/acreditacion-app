@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { obtenerMenuResumen, obtenerResumenDia } from './api';
 
+function formatearMoneda(n){ return `$${Number(n||0).toLocaleString('es-AR')}` }
+
 export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolver }) {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -31,44 +33,91 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
 
   if (cargando) return <View style={styles.centro}><ActivityIndicator color="#0ea5e9" size="large"/><Text style={styles.cargandoTxt}>Cargando dashboard…</Text></View>;
 
+  const porTaller = resumenDia?.porTaller || resumenDia?.talleres || [];
+  const ranking = [...porTaller].sort((a,b)=> (a.inscriptos||0)-(b.inscriptos||0)).slice(0,5);
+  const totalInscriptos = resumenMenu?.totalInscriptos ?? resumenDia?.totalInscriptos ?? porTaller.reduce((s,t)=>s+Number(t.inscriptos||0),0);
+  const totalCapacidad = porTaller.reduce((s,t)=>s+Number(t.cupo||0),0);
+  const totalAcreditados = resumenDia?.totalAcreditados ?? resumenDia?.total ?? 0;
+  const totalMenus = resumenDia?.totalMenus ?? 0;
+  const pctOcupacion = totalCapacidad ? Math.round(totalInscriptos/totalCapacidad*100) : 0;
+
   return (
     <View style={styles.flex}>
-      <View style={styles.barra}>
-        <Pressable style={styles.botonBarra} onPress={onVolver}><Text style={styles.botonBarraTxt}>‹ Volver</Text></Pressable>
-        <Text style={styles.barraTitulo}>Dashboard Admin</Text>
-        <Pressable style={styles.botonBarra} onPress={()=>{ setRefrescando(true); cargar(); }}><Text style={styles.botonBarraTxt}>↻</Text></Pressable>
+      <View style={styles.cabecera}>
+        <Text style={styles.cabeceraTitulo}>Dashboard</Text>
+        <Pressable style={styles.botonActualizar} onPress={()=>{ setRefrescando(true); cargar(); }}><Text style={styles.botonActualizarTxt}>Actualizar</Text></Pressable>
       </View>
       {error ? <View style={styles.errorBox}><Text style={styles.errorTxt}>{error}</Text></View> : null}
       <ScrollView contentContainerStyle={styles.lista} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={cargar} tintColor="#0ea5e9"/>}>
-        {resumenMenu?.servicios ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitulo}>Menús hoy (tiempo real)</Text>
-            {resumenMenu.servicios.map((s)=> (
-              <View key={s.id} style={styles.fila}><Text style={styles.filaTitulo}>{s.titulo}</Text><Text style={styles.filaValor}>{s.asistentes} entregados</Text></View>
-            ))}
-            {resumenMenu.totalInscriptos !== undefined ? <Text style={styles.sub}>Total inscriptos: {resumenMenu.totalInscriptos}</Text> : null}
+        <Text style={styles.resumenAyuda}>Vista general — similar al Panel Admin web</Text>
+        <View style={styles.kpiGrid}>
+          <View style={[styles.kpiCard, { borderTopColor:'#38bdf8' }]}>
+            <Text style={styles.kpiLabel}>Inscriptos en general</Text>
+            <Text style={styles.kpiValue}>{totalInscriptos || '—'}</Text>
+            <Text style={styles.kpiSub}>{totalInscriptos ? `${totalInscriptos} DNI únicos` : 'DNI únicos'}</Text>
+            <Text style={styles.kpiIcon}>👥</Text>
           </View>
-        ) : <View style={styles.card}><Text style={styles.cardTitulo}>Menús</Text><Text style={styles.vacio}>Sin datos de comidas (backend sin resumenComidas o sin bloques break)</Text></View>}
+          <View style={[styles.kpiCard, { borderTopColor:'#16a34a' }]}>
+            <Text style={styles.kpiLabel}>Inscriptos a talleres / Ocupación</Text>
+            <Text style={styles.kpiValue}>{totalInscriptos} / {totalCapacidad}</Text>
+            <Text style={styles.kpiSub}>{pctOcupacion}% ocupación</Text>
+            <View style={styles.kpiProgress}><View style={[styles.kpiProgressBar, { width: `${Math.min(100,pctOcupacion)}%` }]} /></View>
+            <Text style={styles.kpiIcon}>🎓</Text>
+          </View>
+          <View style={[styles.kpiCard, { borderTopColor:'#f59e0b' }]}>
+            <Text style={styles.kpiLabel}>Acreditados / Menús</Text>
+            <Text style={styles.kpiValue}>{totalAcreditados} · {totalMenus}</Text>
+            <Text style={styles.kpiSub}>Hoy · menús entregados</Text>
+            <Text style={styles.kpiIcon}>💰</Text>
+          </View>
+        </View>
 
-        {resumenDia ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitulo}>Talleres — {resumenDia.fecha || 'hoy'}</Text>
-            <Text style={styles.sub}>Acreditados: {resumenDia.totalAcreditados ?? resumenDia.total ?? '—'} · Menús: {resumenDia.totalMenus ?? '—'}</Text>
-            {(resumenDia.porTaller || resumenDia.talleres || []).map((t, i)=> (
-              <View key={i} style={styles.fila}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitulo}>Menús hoy (tiempo real)</Text>
+          {resumenMenu?.servicios ? (
+            resumenMenu.servicios.map((s)=> (
+              <View key={s.id} style={styles.fila}><Text style={styles.filaTitulo}>{s.titulo} · {s.dia}</Text><Text style={styles.filaValor}>{s.asistentes} entregados</Text></View>
+            ))
+          ) : <Text style={styles.vacio}>Sin datos de comidas</Text>}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitulo}>Ranking — Talleres con menos inscriptos</Text>
+          <Text style={styles.ayuda}>Top 5 de menor a mayor ocupación</Text>
+          {ranking.length===0 ? <Text style={styles.vacio}>No hay talleres cargados.</Text> : ranking.map((t,i)=> {
+            const pct = t.cupo ? Math.round((t.inscriptos||0)/t.cupo*100) : 0;
+            return (
+              <View key={i} style={styles.rankingRow}>
                 <View style={{ flex:1 }}>
-                  <Text style={styles.filaTitulo}>{t.taller || t.nombre}</Text>
-                  <Text style={styles.sub}>{t.fecha} {t.hora} · cupo {t.cupo} · inscriptos {t.inscriptos}</Text>
+                  <Text style={styles.rankingLabel}>{t.taller || t.nombre}</Text>
+                  <Text style={styles.rankingMeta}>{t.inscriptos||0} inscriptos · cupo {t.cupo} · {pct}%</Text>
+                  <View style={styles.rankingBarWrap}><View style={[styles.rankingBar, { width: `${Math.min(100,pct)}%`, backgroundColor: pct>85 ? '#ef4444' : pct>60 ? '#f59e0b' : '#16a34a' }]} /></View>
                 </View>
-                <Text style={styles.porcentaje}>{t.porcentaje ?? (t.cupo? Math.round((t.acreditados||0)/t.cupo*100):0)}%</Text>
+                <Text style={styles.rankingValor}>{t.inscriptos}</Text>
               </View>
-            ))}
-            {(!resumenDia.porTaller && !resumenDia.talleres) ? <Text style={styles.vacio}>Sin detalle por taller</Text> : null}
+            );
+          })}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitulo}>Talleres — detalle</Text>
+            <Text style={styles.ayuda}>{porTaller.length} talleres</Text>
           </View>
-        ) : (
-          <View style={styles.card}><Text style={styles.cardTitulo}>Resumen del día</Text><Text style={styles.vacio}>Sin datos (backend aún sin GET /api/mobile/resumen/dia). Mostrando fallback.</Text></View>
-        )}
-        <Text style={styles.footer}>Actualización automática cada 15 s · Capacidad locación disponible en admin web</Text>
+          {porTaller.map((t,i)=> (
+            <View key={i} style={styles.filaDetalle}>
+              <View style={{ flex:1 }}>
+                <Text style={styles.filaTitulo}>{t.taller || t.nombre}</Text>
+                <Text style={styles.sub}>{t.fecha} {t.hora} · cupo {t.cupo} · inscriptos {t.inscriptos} · acreditados {t.acreditados ?? 0}</Text>
+                <Text style={styles.sub}>Libres: {Math.max(0, (t.cupo||0)-(t.inscriptos||0))} · Pendientes: {Math.max(0,(t.inscriptos||0)-(t.acreditados||0))}</Text>
+              </View>
+              <Text style={styles.porcentaje}>{t.porcentaje ?? (t.cupo? Math.round(((t.acreditados||0)/t.cupo)*100):0)}%</Text>
+            </View>
+          ))}
+          {porTaller.length===0 ? <Text style={styles.vacio}>Sin detalle por taller — verificar GET /api/mobile/resumen/dia en 192.168.100.20</Text> : null}
+        </View>
+
+        <Text style={styles.footer}>Actualización automática cada 15 s · Capacidad locación en Configuración web</Text>
       </ScrollView>
     </View>
   );
@@ -77,20 +126,38 @@ const styles = StyleSheet.create({
   flex:{ flex:1, backgroundColor:'#0f172a' },
   centro:{ flex:1, backgroundColor:'#0f172a', alignItems:'center', justifyContent:'center', padding:30 },
   cargandoTxt:{ color:'#94a3b8', marginTop:12 },
-  barra:{ flexDirection:'row', alignItems:'center', justifyContent:'space-between', paddingTop:46, paddingBottom:12, paddingHorizontal:16, backgroundColor:'#0f172a' },
-  barraTitulo:{ color:'#f8fafc', fontSize:17, fontWeight:'bold' },
-  botonBarra:{ paddingHorizontal:12, paddingVertical:8, borderRadius:8, backgroundColor:'rgba(255,255,255,0.12)', minWidth:60, alignItems:'center' },
-  botonBarraTxt:{ color:'#fff', fontSize:14 },
+  cabecera:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingHorizontal:16, paddingVertical:12, borderBottomWidth:1, borderBottomColor:'#1e293b' },
+  cabeceraTitulo:{ color:'#f8fafc', fontSize:18, fontWeight:'bold' },
+  botonActualizar:{ backgroundColor:'#1e293b', paddingHorizontal:14, paddingVertical:8, borderRadius:8, borderWidth:1, borderColor:'#334155' },
+  botonActualizarTxt:{ color:'#e2e8f0', fontWeight:'600' },
   errorBox:{ backgroundColor:'#7f1d1d', padding:10, marginHorizontal:16, borderRadius:8, marginTop:6 },
   errorTxt:{ color:'#fecaca', textAlign:'center' },
   lista:{ padding:16, gap:14, paddingBottom:32 },
-  card:{ backgroundColor:'#1e293b', borderRadius:14, padding:16 },
-  cardTitulo:{ color:'#f8fafc', fontSize:16, fontWeight:'bold', marginBottom:10 },
+  resumenAyuda:{ color:'#64748b', fontSize:12, textAlign:'center' },
+  kpiGrid:{ flexDirection:'column', gap:12 },
+  kpiCard:{ backgroundColor:'#1e293b', borderRadius:14, padding:16, borderTopWidth:3, position:'relative', overflow:'hidden' },
+  kpiLabel:{ color:'#94a3b8', fontSize:12, fontWeight:'600', textTransform:'uppercase', letterSpacing:0.5 },
+  kpiValue:{ color:'#f8fafc', fontSize:22, fontWeight:'bold', marginTop:6 },
+  kpiSub:{ color:'#64748b', fontSize:12, marginTop:4 },
+  kpiIcon:{ position:'absolute', right:14, top:14, fontSize:22, opacity:0.8 },
+  kpiProgress:{ height:6, backgroundColor:'#0f172a', borderRadius:3, marginTop:10, overflow:'hidden' },
+  kpiProgressBar:{ height:'100%', backgroundColor:'#16a34a' },
+  section:{ backgroundColor:'#1e293b', borderRadius:14, padding:16 },
+  sectionTitulo:{ color:'#f8fafc', fontSize:15, fontWeight:'bold' },
+  sectionHeader:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:8 },
+  ayuda:{ color:'#64748b', fontSize:12, marginTop:4 },
   fila:{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingVertical:8, borderTopWidth:1, borderTopColor:'#334155', gap:10 },
   filaTitulo:{ color:'#e2e8f0', fontSize:14, fontWeight:'600' },
   filaValor:{ color:'#38bdf8', fontSize:14, fontWeight:'bold' },
+  filaDetalle:{ flexDirection:'row', alignItems:'center', paddingVertical:10, borderTopWidth:1, borderTopColor:'#334155', gap:10 },
   sub:{ color:'#94a3b8', fontSize:12, marginTop:2 },
   porcentaje:{ color:'#4ade80', fontWeight:'bold', fontSize:16 },
-  vacio:{ color:'#64748b', fontSize:13 },
+  vacio:{ color:'#64748b', fontSize:13, marginTop:8 },
+  rankingRow:{ flexDirection:'row', alignItems:'center', paddingVertical:10, borderTopWidth:1, borderTopColor:'#334155', gap:12 },
+  rankingLabel:{ color:'#e2e8f0', fontWeight:'600', fontSize:14 },
+  rankingMeta:{ color:'#64748b', fontSize:12, marginTop:2 },
+  rankingBarWrap:{ height:6, backgroundColor:'#0f172a', borderRadius:3, marginTop:6, overflow:'hidden' },
+  rankingBar:{ height:'100%' },
+  rankingValor:{ color:'#f8fafc', fontWeight:'bold', fontSize:16, minWidth:24, textAlign:'right' },
   footer:{ color:'#475569', fontSize:12, textAlign:'center', marginTop:8 },
 });

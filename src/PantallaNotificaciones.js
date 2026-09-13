@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { crearNotificacion, obtenerNotificaciones } from './api';
+import { crearNotificacion, obtenerNotificaciones, marcarNotificacionLeida, marcarTodasLeidas } from './api';
 
 const INFO_TIPO = {
   info: { icono: 'ℹ️', etiqueta: 'Información', color: '#38bdf8' },
@@ -51,7 +51,10 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
 
   const obtener = useCallback(async () => {
     const r = await obtenerNotificaciones(sesion);
-    setNotificaciones(r.notificaciones || []);
+    const lista = r.notificaciones || [];
+    // ordenar: no leídas primero, luego leídas al fondo
+    lista.sort((a,b) => Number(a.leida) - Number(b.leida));
+    setNotificaciones(lista);
     setEstado('lista');
   }, [sesion]);
 
@@ -147,7 +150,24 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
     return () => clearInterval(id);
   }, [refrescar, mostrarForm]);
 
+  const marcarLeida = useCallback(async (id) => {
+    try { await marcarNotificacionLeida(sesion, id); } catch (_) {}
+    setNotificaciones(prev => {
+      const upd = prev.map(n => n.id===id ? { ...n, leida:true } : n);
+      upd.sort((a,b)=> Number(a.leida)-Number(b.leida));
+      return upd;
+    });
+  }, [sesion]);
+
+  const marcarTodas = useCallback(async () => {
+    try { await marcarTodasLeidas(sesion); } catch (_) {}
+    setNotificaciones(prev => prev.map(n=> ({...n, leida:true})));
+  }, [sesion]);
+
   const sinConexion = error.startsWith('Sin conexión');
+
+  const noLeidas = notificaciones.filter(n=>!n.leida).length;
+  const leidas = notificaciones.filter(n=>n.leida).length;
 
   return (
     <View style={styles.flex}>
@@ -158,6 +178,7 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
         <View style={styles.barraCentro}>
           <Text style={styles.barraTitulo}>Notificaciones</Text>
           {esAdmin ? <Text style={styles.badgeAdmin}>ADMIN</Text> : null}
+          {noLeidas>0 ? <Text style={styles.badgeNoLeidas}>{noLeidas} nuevas</Text> : null}
         </View>
         <View style={styles.barraAcciones}>
           {esAdmin ? (
@@ -166,6 +187,11 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
               onPress={() => { setErrorEnvio(''); setExitoEnvio(''); setMostrarForm(true); }}
             >
               <Text style={styles.botonNuevoTexto}>＋ Nuevo</Text>
+            </Pressable>
+          ) : null}
+          {noLeidas>0 ? (
+            <Pressable style={[styles.botonBarra, styles.botonMarcar]} onPress={marcarTodas}>
+              <Text style={styles.botonMarcarTexto}>✓ Leídas</Text>
             </Pressable>
           ) : null}
           <Pressable
@@ -219,21 +245,39 @@ export default function PantallaNotificaciones({ sesion, alExpirarSesion, onVolv
             <RefreshControl refreshing={refrescando} onRefresh={() => refrescar(false)} tintColor="#38bdf8" />
           }
         >
-          {notificaciones.map((n) => {
+          {notificaciones.filter(n=>!n.leida).map((n) => {
             const tipo = INFO_TIPO[String(n.tipo)] || INFO_TIPO.info;
             return (
-              <View key={n.id} style={[styles.tarjeta, { borderLeftColor: tipo.color }]}>
+              <Pressable key={n.id} onPress={()=>marcarLeida(n.id)} style={[styles.tarjeta, { borderLeftColor: tipo.color }]}>
                 <View style={styles.tarjetaEncabezado}>
                   <Text style={styles.tipoIcono}>{tipo.icono}</Text>
                   <Text style={[styles.tipoTexto, { color: tipo.color }]}>{tipo.etiqueta}</Text>
                   <Text style={styles.fecha}>{n.creado_en_texto || formatearFecha(n.creado_en)}</Text>
+                  <Text style={styles.badgeNueva}>NUEVA</Text>
                 </View>
                 <Text style={styles.titulo}>{n.titulo}</Text>
                 {n.mensaje ? <Text style={styles.mensaje}>{n.mensaje}</Text> : null}
+                <Text style={styles.toqueHint}>Tocar para marcar leída</Text>
+              </Pressable>
+            );
+          })}
+          {noLeidas>0 && leidas>0 ? <Text style={styles.separadorLeidas}>— Leídas — pasan a segundo plano</Text> : null}
+          {notificaciones.filter(n=>n.leida).map((n) => {
+            const tipo = INFO_TIPO[String(n.tipo)] || INFO_TIPO.info;
+            return (
+              <View key={n.id} style={[styles.tarjeta, styles.tarjetaLeida, { borderLeftColor: '#475569' }]}>
+                <View style={styles.tarjetaEncabezado}>
+                  <Text style={styles.tipoIcono}>{tipo.icono}</Text>
+                  <Text style={[styles.tipoTexto, { color: '#94a3b8' }]}>{tipo.etiqueta}</Text>
+                  <Text style={styles.fecha}>{n.creado_en_texto || formatearFecha(n.creado_en)}</Text>
+                  <Text style={styles.badgeLeida}>leída</Text>
+                </View>
+                <Text style={[styles.titulo, styles.tituloLeida]}>{n.titulo}</Text>
+                {n.mensaje ? <Text style={[styles.mensaje, styles.mensajeLeida]}>{n.mensaje}</Text> : null}
               </View>
             );
           })}
-          <Text style={styles.footer}>Se actualiza automáticamente cada 15 s</Text>
+          <Text style={styles.footer}>Se actualiza automáticamente cada 15 s · {noLeidas} sin leer</Text>
         </ScrollView>
       )}
 
@@ -368,6 +412,11 @@ const styles = StyleSheet.create({
   },
   botonNuevo: { backgroundColor: '#16a34a', minWidth: 70 },
   botonNuevoTexto: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+  botonMarcar: { backgroundColor: '#475569', minWidth: 70 },
+  botonMarcarTexto: { color: '#e2e8f0', fontSize: 12, fontWeight: 'bold' },
+  badgeNoLeidas: { color: '#38bdf8', fontSize: 11, fontWeight: 'bold', marginTop: 2, backgroundColor: 'rgba(56,189,248,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden' },
+  badgeNueva: { color: '#f8fafc', fontSize: 10, fontWeight: 'bold', backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden', marginLeft: 8 },
+  badgeLeida: { color: '#64748b', fontSize: 10, fontWeight: 'bold', backgroundColor: 'rgba(100,116,139,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden', marginLeft: 8 },
   botonBarraDeshabilitado: { opacity: 0.5 },
   botonBarraTexto: { color: '#fff', fontSize: 15 },
   centro: {
@@ -432,7 +481,12 @@ const styles = StyleSheet.create({
   tipoTexto: { fontSize: 13, fontWeight: 'bold', flex: 1 },
   fecha: { color: '#64748b', fontSize: 12 },
   titulo: { color: '#f8fafc', fontSize: 17, fontWeight: 'bold' },
+  tituloLeida: { color: '#94a3b8', fontWeight: '600' },
   mensaje: { color: '#cbd5e1', fontSize: 14, marginTop: 6, lineHeight: 20 },
+  mensajeLeida: { color: '#64748b' },
+  tarjetaLeida: { backgroundColor: '#0f172a', opacity: 0.7, borderLeftWidth: 3 },
+  separadorLeidas: { color: '#475569', fontSize: 12, textAlign: 'center', marginVertical: 12, letterSpacing: 1, fontWeight: '600' },
+  toqueHint: { color: '#38bdf8', fontSize: 11, marginTop: 6, fontStyle: 'italic' },
   fab: {
     position: 'absolute',
     bottom: 24,
