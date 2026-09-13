@@ -52,15 +52,23 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
 
   const porTaller = resumenDia?.porTaller || resumenDia?.talleres || [];
   const ranking = [...porTaller].sort((a,b)=> (a.inscriptos||0)-(b.inscriptos||0)).slice(0,5);
-  // Usuario aclara: inscriptos = totales en evento (encuentro_inscripciones), inscriptos a talleres = DNI único en inscripciones, acreditados = DNI único en acreditaciones
+  const ultimos5 = resumenDia?.ultimos5 || [];
+  // Inscriptos en general = encuentro_inscripciones (66), Inscriptos a talleres = encuentroConTaller (52), faltantes = encuentroSin (14), acreditados = DNI único en acreditaciones
   const inscriptosEvento = resumenDia?.inscriptosEvento ?? resumenDia?.inscriptos_evento ?? null;
   const inscriptosTalleres = resumenDia?.inscriptosTalleres ?? resumenDia?.inscriptos_talleres ?? resumenMenu?.totalInscriptos ?? null;
-  // fallback si backend viejo: calcular distinct tallers sum no es correcto, usar inscriptosTalleres si existe si no porTaller sum (no distinct) solo como fallback
+  const encuentroConTaller = resumenDia?.encuentroConTaller ?? resumenDia?.encuentro_con_taller ?? null;
+  const encuentroSin = resumenDia?.encuentroSin ?? resumenDia?.encuentro_sin ?? null;
   const inscriptosTalleresDisplay = inscriptosTalleres != null ? inscriptosTalleres : porTaller.reduce((s,t)=>s+Number(t.inscriptos||0),0);
   const totalCapacidad = porTaller.reduce((s,t)=>s+Number(t.cupo||0),0);
   const totalAcreditados = resumenDia?.totalAcreditados ?? resumenDia?.total ?? 0;
   const totalMenus = resumenDia?.totalMenus ?? 0;
+  // KPI2 debe reflejar web: encuentroConTaller / encuentroSin (ej 52/14). Fallback a inscriptosTalleres si backend viejo.
+  const kpi2Valor = (encuentroConTaller != null && encuentroSin != null) ? `${encuentroConTaller} / ${encuentroSin}` : `${inscriptosTalleresDisplay} / ${totalCapacidad}`;
+  const kpi2Sub = (encuentroConTaller != null && encuentroSin != null)
+    ? `${encuentroSin} sin taller · ${inscriptosEvento ? Math.round(encuentroConTaller/inscriptosEvento*100) : 0}% con taller` + (inscriptosTalleres != null && inscriptosTalleres !== encuentroConTaller ? ` · ${inscriptosTalleres} DNI único con taller (+${inscriptosTalleres - encuentroConTaller} fuera de encuentro)` : '')
+    : `${Math.round(inscriptosTalleresDisplay/totalCapacidad*100)||0}% ocupación · ${inscriptosTalleres != null ? 'DNI único' : 'fallback suma'}`;
   const pctOcupacion = totalCapacidad ? Math.round(inscriptosTalleresDisplay/totalCapacidad*100) : 0;
+  const pctConTaller = inscriptosEvento ? Math.round((encuentroConTaller||inscriptosTalleresDisplay)/inscriptosEvento*100) : pctOcupacion;
 
   return (
     <View style={styles.flex}>
@@ -70,19 +78,19 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
       </View>
       {error ? <View style={styles.errorBox}><Text style={styles.errorTxt}>{error}</Text></View> : null}
       <ScrollView contentContainerStyle={styles.lista} refreshControl={<RefreshControl refreshing={refrescando} onRefresh={cargar} tintColor="#0ea5e9"/>}>
-        <Text style={styles.resumenAyuda}>Vista general — similar al Panel Admin web (DNI único)</Text>
+        <Text style={styles.resumenAyuda}>Vista general — idéntica al Panel Admin web</Text>
         <View style={styles.kpiGrid}>
           <View style={[styles.kpiCard, { borderTopColor:'#38bdf8' }]}>
-            <Text style={styles.kpiLabel}>Inscriptos totales en el evento</Text>
+            <Text style={styles.kpiLabel}>Inscriptos en general</Text>
             <Text style={styles.kpiValue}>{inscriptosEvento != null ? inscriptosEvento : '—'}</Text>
-            <Text style={styles.kpiSub}>{inscriptosEvento != null ? `${inscriptosEvento} en encuentro` : 'encuentro_inscripciones'}</Text>
+            <Text style={styles.kpiSub}>{inscriptosEvento != null ? `${inscriptosEvento} en encuentro` + (inscriptosTalleres != null ? ` · ${inscriptosTalleres} DNI único en talleres` : '') : 'encuentro_inscripciones · requiere backend actualizado'}</Text>
             <Text style={styles.kpiIcon}>👥</Text>
           </View>
           <View style={[styles.kpiCard, { borderTopColor:'#16a34a' }]}>
-            <Text style={styles.kpiLabel}>Inscriptos a talleres (DNI único)</Text>
-            <Text style={styles.kpiValue}>{inscriptosTalleresDisplay} / {totalCapacidad}</Text>
-            <Text style={styles.kpiSub}>{pctOcupacion}% ocupación · {inscriptosTalleres != null ? 'DNI único' : 'fallback suma'}</Text>
-            <View style={styles.kpiProgress}><View style={[styles.kpiProgressBar, { width: `${Math.min(100,pctOcupacion)}%` }]} /></View>
+            <Text style={styles.kpiLabel}>Inscriptos a talleres / Faltantes</Text>
+            <Text style={styles.kpiValue}>{kpi2Valor}</Text>
+            <Text style={styles.kpiSub}>{kpi2Sub}</Text>
+            <View style={styles.kpiProgress}><View style={[styles.kpiProgressBar, { width: `${Math.min(100, pctConTaller || pctOcupacion)}%` }]} /></View>
             <Text style={styles.kpiIcon}>🎓</Text>
           </View>
           <View style={[styles.kpiCard, { borderTopColor:'#f59e0b' }]}>
@@ -118,6 +126,22 @@ export default function PantallaDashboardAdmin({ sesion, alExpirarSesion, onVolv
               </View>
             );
           })}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitulo}>Últimos 5 inscriptos</Text>
+            <Text style={styles.ayuda}>DNI único · más recientes</Text>
+          </View>
+          {ultimos5.length===0 ? <Text style={styles.vacio}>Sin datos — actualizá el backend en 192.168.100.20 (git pull + pm2 restart).</Text> : ultimos5.map((u, idx)=> (
+            <View key={idx} style={styles.filaDetalle}>
+              <View style={{ flex:1 }}>
+                <Text style={styles.filaTitulo}>{u.apellido} {u.nombre} · {u.dni}</Text>
+                <Text style={styles.sub} numberOfLines={1}>{u.taller || '—'} · {u.estado_pago}</Text>
+              </View>
+              <Text style={styles.sub}>{u.creado_en ? String(u.creado_en).slice(0,10) : ''}</Text>
+            </View>
+          ))}
         </View>
 
         <View style={styles.section}>

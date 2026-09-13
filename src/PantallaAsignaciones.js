@@ -62,9 +62,16 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
     try {
       const r = await obtenerOperadores(sesion);
       const lista = r.operadores || r || [];
-      setOperadores(lista);
+      setOperadores(Array.isArray(lista) ? lista : []);
+      if (!lista || lista.length===0) {
+        // si backend viejo (404 fallback -> []) mostrar pista, no es error fatal
+        console.log('[Asignaciones] operadores vacío, posible backend sin /api/mobile/operadores');
+      }
     } catch (e) {
       if (e.sesionExpirada) alExpirarSesion?.();
+      else if (e.status===403) setError('Solo admin/superior puede ver operadores. Verificá tu rol.');
+      else if (e.permisoDenegado) setError(e.message);
+      else setError(e.message || 'No se pudo cargar operadores. Verificá que 192.168.100.20 tenga el deploy nuevo (git pull + pm2 restart).');
     } finally { setLoadingOps(false); }
   }, [sesion, alExpirarSesion]);
 
@@ -75,6 +82,7 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
       setTalleres(Array.isArray(lista) ? lista : []);
     } catch (e) {
       if (e.sesionExpirada) alExpirarSesion?.();
+      else setError(e.message || 'No se pudo cargar talleres.');
     } finally { setLoadingTalleres(false); }
   }, [sesion, alExpirarSesion]);
 
@@ -131,10 +139,14 @@ export default function PantallaAsignaciones({ sesion, onVolver, alExpirarSesion
         <View style={styles.card}>
           <Text style={styles.cardTitulo}>Nueva asignación (Superior)</Text>
           <Text style={styles.ayuda}>Solo usuarios con rol operador. El día se asigna automáticamente según el taller.</Text>
-          {loadingOps ? <ActivityIndicator color="#f59e0b" style={{marginVertical:8}}/> : (
+          {loadingOps ? <ActivityIndicator color="#f59e0b" style={{marginVertical:8}}/> : opcionesOperadores.length===0 ? (
+            <View style={{ backgroundColor:'#7f1d1d', padding:10, borderRadius:8, marginTop:6 }}><Text style={{ color:'#fecaca', fontSize:12, textAlign:'center' }}>No hay operadores (rol operador). Cargalos en Panel Admin → Usuarios (2 operadores esperados) y actualizá el backend en 192.168.100.20 (git pull + pm2 restart) para habilitar GET /api/mobile/operadores.</Text></View>
+          ) : (
             <Dropdown label="Operador" value={operador} placeholder="Seleccioná operador" options={opcionesOperadores} onSelect={setOperador} />
           )}
-          {loadingTalleres ? <ActivityIndicator color="#f59e0b" style={{marginVertical:8}}/> : (
+          {loadingTalleres ? <ActivityIndicator color="#f59e0b" style={{marginVertical:8}}/> : opcionesTalleres.length===0 ? (
+            <View style={{ backgroundColor:'#7f1d1d', padding:10, borderRadius:8, marginTop:6 }}><Text style={{ color:'#fecaca', fontSize:12, textAlign:'center' }}>Sin talleres — verificá GET /api/mobile/talleres o /api/talleres en 192.168.100.20</Text></View>
+          ) : (
             <Dropdown label="Taller" value={tallerId} placeholder="Seleccioná taller" options={opcionesTalleres} onSelect={onSelectTaller} />
           )}
           <Text style={styles.label}>Día (auto según taller)</Text>
