@@ -337,3 +337,36 @@ export async function obtenerDashboard(sesion) {
     throw e;
   }
 }
+
+export async function obtenerOperadores(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    return await pedir(`${base}/api/mobile/operadores`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch (e) {
+    if (e.status === 401) { const err=new Error('Sesión expirada'); err.sesionExpirada=true; throw err; }
+    if (e.status === 404) return { operadores: [] };
+    throw e;
+  }
+}
+
+export async function obtenerTalleres(sesion) {
+  const base = normalizarUrl(sesion.servidorUrl);
+  try {
+    // primero intentar endpoint autenticado mobile
+    const r = await pedir(`${base}/api/mobile/talleres`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+    return r.talleres || r || [];
+  } catch (e) {
+    if (e.status === 401) { const err=new Error('Sesión expirada'); err.sesionExpirada=true; throw err; }
+    // fallback público /api/talleres sin auth
+    try {
+      const res = await fetch(`${base}/api/talleres`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : data.talleres || [];
+    } catch (_) { return []; }
+  }
+}
